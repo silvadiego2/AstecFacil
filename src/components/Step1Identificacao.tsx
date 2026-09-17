@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Loader2, Building2, MapPin, AlertCircle } from 'lucide-react';
+import { Search, Loader2, Building2, MapPin, AlertCircle, RefreshCw } from 'lucide-react';
 import { ProcessoFormData } from '../types';
 import { ZONEAMENTOS_CAMACARI } from '../data/normativasCamacari';
 import { consultarCnpjBrasilApi } from '../services/api';
@@ -13,7 +13,6 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [erroCnpj, setErroCnpj] = useState<string | null>(null);
 
-  // Máscara dinâmica SIS-SEDUR: 00000.22.09.000.2026
   const handleProcessoChange = (val: string) => {
     let clean = val.replace(/\D/g, '').slice(0, 17);
     let masked = clean;
@@ -44,24 +43,20 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         data.complemento
       ].filter(Boolean).join(' ');
 
-      const principal = {
-        codigo: data.cnae_fiscal,
-        descricao: data.cnae_fiscal_descricao,
-      };
-
-      const secundarios = (data.cnaes_secundarios || []).map(c => ({
-        codigo: c.codigo,
-        descricao: c.descricao,
-      }));
-
       setFormData(prev => ({
         ...prev,
         interessado: data.razao_social || data.nome_fantasia || prev.interessado,
         endereco: logradouroCompleto || prev.endereco,
         bairro: data.bairro || prev.bairro,
         cep: data.cep || prev.cep,
-        cnae_principal: principal,
-        cnaes_secundarios: secundarios,
+        cnae_principal: {
+          codigo: data.cnae_fiscal,
+          descricao: data.cnae_fiscal_descricao,
+        },
+        cnaes_secundarios: (data.cnaes_secundarios || []).map(c => ({
+          codigo: c.codigo,
+          descricao: c.descricao,
+        })),
       }));
     } catch (err: any) {
       setErroCnpj(err.message || 'Falha ao buscar dados na BrasilAPI. Preencha manualmente.');
@@ -75,10 +70,10 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
           <Building2 className="w-6 h-6 text-slate-700" />
-          Etapa 1: Identificação do Processo e Localização
+          Etapa 1: Identificação do Processo e Tipo de Requerimento
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Insira o número de protocolo do SIS-SEDUR e consulte o CNPJ do interessado via BrasilAPI para preenchimento automatizado.
+          Informe o protocolo do SIS-SEDUR, o tipo de solicitação e faça a busca cadastral do CNPJ.
         </p>
       </div>
 
@@ -89,8 +84,70 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         </div>
       )}
 
+      {/* Seletor de Tipo de Solicitação */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+        <label className="block text-sm font-bold text-slate-800 mb-2">
+          Natureza da Demanda Administrativa:
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className={`p-3 rounded-lg border-2 flex items-center gap-3 cursor-pointer transition ${
+            formData.tipoSolicitacao === 'NOVA_LICENCA' 
+              ? 'border-slate-800 bg-white shadow-sm font-semibold' 
+              : 'border-slate-200 bg-slate-100 text-slate-600'
+          }`}>
+            <input
+              type="radio"
+              name="tipoSolicitacao"
+              checked={formData.tipoSolicitacao === 'NOVA_LICENCA'}
+              onChange={() => setFormData(p => ({ ...p, tipoSolicitacao: 'NOVA_LICENCA' }))}
+              className="text-slate-800 focus:ring-slate-700"
+            />
+            <div>
+              <div className="text-sm">Novo Ato / Primeira Emissão</div>
+              <div className="text-xs text-slate-500">Dispensa (DLA), Licença Simplificada (LAS) ou Inexigibilidade</div>
+            </div>
+          </label>
+
+          <label className={`p-3 rounded-lg border-2 flex items-center gap-3 cursor-pointer transition ${
+            formData.tipoSolicitacao === 'RENOVACAO' 
+              ? 'border-emerald-600 bg-emerald-50 shadow-sm font-semibold text-emerald-950' 
+              : 'border-slate-200 bg-slate-100 text-slate-600'
+          }`}>
+            <input
+              type="radio"
+              name="tipoSolicitacao"
+              checked={formData.tipoSolicitacao === 'RENOVACAO'}
+              onChange={() => setFormData(p => ({ ...p, tipoSolicitacao: 'RENOVACAO', modalidade: 'RENOVACAO_LAS' }))}
+              className="text-emerald-600 focus:ring-emerald-500"
+            />
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-emerald-600" />
+              <div>
+                <div className="text-sm">Renovação de Licença Ambiental Simplificada (RLAS)</div>
+                <div className="text-xs text-slate-500">Empreendimento já licenciado anteriormente na SEDUR</div>
+              </div>
+            </div>
+          </label>
+        </div>
+
+        {formData.tipoSolicitacao === 'RENOVACAO' && (
+          <div className="mt-3 pt-3 border-t border-slate-200">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Portaria ou Número da Licença Anterior a Renovar:
+            </label>
+            <input
+              type="text"
+              value={formData.numeroLicencaAnterior || ''}
+              onChange={e => setFormData(p => ({ ...p, numeroLicencaAnterior: e.target.value }))}
+              placeholder="Ex: Portaria SEDUR nº 084/2023 ou LAS nº 2023-0145"
+              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white"
+            />
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Número do Processo SIS-SEDUR */}
+        {/* Número do Processo */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-1">
             Número do Processo SIS-SEDUR *
@@ -100,12 +157,11 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             value={formData.numero_processo}
             onChange={e => handleProcessoChange(e.target.value)}
             placeholder="Ex: 01452.22.09.001.2026"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-600 focus:border-slate-600 font-mono tracking-wide"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 font-mono tracking-wide"
           />
-          <span className="text-xs text-slate-400">Padrão municipal: XXXXX.22.09.XXX.AAAA</span>
         </div>
 
-        {/* CNPJ e Botão BrasilAPI */}
+        {/* CNPJ */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-1">
             CNPJ do Interessado *
@@ -116,7 +172,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
               value={formData.cnpj}
               onChange={e => setFormData(p => ({ ...p, cnpj: e.target.value }))}
               placeholder="00.000.000/0000-00"
-              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-600 focus:border-slate-600 font-mono"
+              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-slate-900 font-mono"
             />
             <button
               type="button"
@@ -125,13 +181,12 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
               className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg flex items-center gap-2 text-sm font-medium transition disabled:opacity-50"
             >
               {loadingCnpj ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-              Consultar BrasilAPI
+              Consultar
             </button>
           </div>
-          <span className="text-xs text-slate-400">Integração pública direta com a Receita Federal</span>
         </div>
 
-        {/* Razão Social / Interessado */}
+        {/* Razão Social */}
         <div className="md:col-span-2">
           <label className="block text-sm font-semibold text-slate-700 mb-1">
             Razão Social / Requerente *
@@ -141,7 +196,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             value={formData.interessado}
             onChange={e => setFormData(p => ({ ...p, interessado: e.target.value }))}
             placeholder="Nome empresarial completo da pessoa jurídica"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
           />
         </div>
 
@@ -155,7 +210,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             value={formData.endereco}
             onChange={e => setFormData(p => ({ ...p, endereco: e.target.value }))}
             placeholder="Rua, Avenida, Rodovia, Lote, Galpão"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
           />
         </div>
 
@@ -169,7 +224,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             value={formData.bairro}
             onChange={e => setFormData(p => ({ ...p, bairro: e.target.value }))}
             placeholder="Ex: Ponto Certo, Polo Petroquímico, Catu de Abrantes, Guarajuba"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
           />
         </div>
 
@@ -184,35 +239,34 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             value={formData.area_m2 || ''}
             onChange={e => setFormData(p => ({ ...p, area_m2: parseFloat(e.target.value) || 0 }))}
             placeholder="0.00"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
           />
-          <span className="text-xs text-slate-400">Área útil de operação declarada no RCE</span>
         </div>
 
         {/* Coordenadas */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
             <MapPin className="w-4 h-4 text-slate-500" />
-            Coordenadas Geográficas (SIRGAS 2000 / Lat-Long)
+            Coordenadas Geográficas (SIRGAS 2000)
           </label>
           <input
             type="text"
             value={formData.coordenadas}
             onChange={e => setFormData(p => ({ ...p, coordenadas: e.target.value }))}
             placeholder="Ex: -12.6975, -38.3241 ou UTM 24S 573210 / 8596540"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
           />
         </div>
 
-        {/* Zoneamento de Camaçari */}
+        {/* Zoneamento */}
         <div className="md:col-span-2">
           <label className="block text-sm font-semibold text-slate-700 mb-1">
-            Macrozoneamento / Zoneamento Urbanístico (LC nº 1.873/2023 - PDDU)
+            Macrozoneamento Urbanístico (PDDU - LC nº 1.873/2023)
           </label>
           <select
             value={formData.zona_urbanistica}
             onChange={e => setFormData(p => ({ ...p, zona_urbanistica: e.target.value }))}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-slate-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white"
           >
             {ZONEAMENTOS_CAMACARI.map(z => (
               <option key={z.valor} value={z.valor}>
