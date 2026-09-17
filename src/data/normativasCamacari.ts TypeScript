@@ -1,0 +1,48 @@
+export const ZONEAMENTOS_CAMACARI = [
+  { valor: 'ZOUC 1', label: 'ZOUC 1 - Zona de Ocupação Urbana Consolidada 1' },
+  { valor: 'ZOUC 2', label: 'ZOUC 2 - Zona de Ocupação Urbana Consolidada 2' },
+  { valor: 'ZDC 1', label: 'ZDC 1 - Zona de Desenvolvimento e Comércio 1' },
+  { valor: 'ZDC 2', label: 'ZDC 2 - Zona de Desenvolvimento e Comércio 2' },
+  { valor: 'ZDC 3', label: 'ZDC 3 - Zona de Desenvolvimento e Comércio 3' },
+  { valor: 'ZDC 4', label: 'ZDC 4 - Zona de Desenvolvimento e Comércio 4' },
+  { valor: 'ZDC 5', label: 'ZDC 5 - Zona de Desenvolvimento e Comércio 5' },
+  { valor: 'ZPIC', label: 'ZPIC - Zona de Polo Industrial de Camaçari' },
+  { valor: 'ZEIS', label: 'ZEIS - Zona Especial de Interesse Social' },
+  { valor: 'ZTR', label: 'ZTR - Zona Turística e Residencial (Orla)' },
+  { valor: 'ZIT', label: 'ZIT - Zona de Interesse Turístico' },
+  { valor: 'ZEU', label: 'ZEU - Zona de Expansão Urbana' },
+  { valor: 'ZPA', label: 'ZPA - Zona de Proteção Ambiental' },
+];
+
+export const DOCUMENTOS_BASE_CAMACARI = [
+  { id: 1, nome: 'Requerimento padrão assinado pelo responsável legal ou procurador constituído', obrigatorio: true },
+  { id: 2, nome: 'Comprovante de Inscrição e Situação Cadastral do CNPJ (ativo)', obrigatorio: true },
+  { id: 3, nome: 'Contrato Social consolidado ou última alteração contratual (JUCEB)', obrigatorio: true },
+  { id: 4, nome: 'Documento oficial de identificação dos sócios/administradores (RG/CPF ou CNH-e)', obrigatorio: true },
+  { id: 5, nome: 'Contrato de Locação vigente com firmas reconhecidas ou Escritura Pública do Imóvel', obrigatorio: true },
+  { id: 6, nome: 'Certidão de Inteiro Teor e Ônus do Imóvel atualizada (Cartório de Registro de Imóveis de Camaçari)', obrigatorio: true },
+  { id: 7, nome: 'Certidão Negativa de Débitos Municipais e Imobiliários / IPTU (SEFAZ Camaçari)', obrigatorio: true },
+  { id: 8, nome: 'Comprovante recente da concessionária de energia elétrica (Neoenergia Coelba)', obrigatorio: true },
+  { id: 9, nome: 'Comprovante recente de abastecimento de água e esgotamento sanitário (EMBASA)', obrigatorio: true },
+  { id: 10, nome: 'Relatório de Caracterização do Empreendimento (RCE) detalhado e assinado', obrigatorio: true },
+  { id: 11, nome: 'Arquivo georreferenciado em formato KML/KMZ (SIRGAS 2000) e Croqui de Acesso', obrigatorio: true },
+  { id: 12, nome: 'Alvará de Localização e Funcionamento ou Consulta Prévia de Viabilidade Urbanística', obrigatorio: true },
+  { id: 13, nome: 'Alvará Sanitário emitido pela Vigilância Sanitária Municipal (SESAU/VISA), se aplicável', obrigatorio: false },
+  { id: 14, nome: 'Certificado de Licença do Corpo de Bombeiros Militar (CLCB ou AVCB)', obrigatorio: true },
+  { id: 15, nome: 'Comprovantes de quitação bancária do DAM de Abertura de Processo e da Taxa de DLA/LAS', obrigatorio: true },
+  { id: 16, nome: 'Parecer Técnico ou Relatório de Vistoria da DIRAM/CLA (quando realizado)', obrigatorio: false },
+];
+
+export const PALAVRAS_CHAVE_INDUSTRIA = [
+  'fabricacao', 'fabricação', 'producao', 'produção', 'usinagem', 'tintas',
+  'corte termico', 'corte térmico', 'alimentos', 'metalurgica', 'metalúrgica',
+  'quimica', 'química', 'plastico', 'plástico', 'torno', 'solda', 'revestimento'
+];
+
+export const FUNDAMENTACAO_LEGAL = {
+  codigoMeioAmbiente: 'Lei Complementar Municipal nº 1.876/2023 (Código de Meio Ambiente do Município de Camaçari, Anexo IV)',
+  pddu: 'Lei Complementar Municipal nº 1.873/2023 (Plano Diretor de Desenvolvimento Urbano de Camaçari - PDDU)',
+  codigoUrbanistico: 'Lei Complementar Municipal nº 1.874/2023 (Código Urbanístico e de Obras de Camaçari)',
+  decretoEstadual: 'Decreto Estadual da Bahia nº 14.024/2012 e alterações posteriores',
+  cepram: 'Resoluções CEPRAM nº 4.327/2013 e nº 4.579/2018 (Impacto Local e Atividades Dispensadas/Simplificadas)'
+};
