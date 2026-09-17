@@ -1,5 +1,8 @@
-export type ModalidadeLicenca = 'DISPENSA' | 'LAS' | 'INEXIGIBILIDADE';
+// src/types/index.ts
+
+export type ModalidadeLicenca = 'DISPENSA' | 'LAS' | 'INEXIGIBILIDADE' | 'RENOVACAO_LAS';
 export type StatusParecer = 'DEFERIMENTO' | 'INDEFERIMENTO' | 'DILIGENCIA';
+export type TipoSolicitacao = 'NOVA_LICENCA' | 'RENOVACAO';
 
 export interface CnaeItem {
   codigo: number | string;
@@ -23,14 +26,6 @@ export interface BrasilApiCnpjResponse {
   cnaes_secundarios: CnaeItem[];
 }
 
-export interface DocumentoChecklistItem {
-  id: number;
-  nome: string;
-  obrigatorio: boolean;
-  conferido: boolean;
-  observacao?: string;
-}
-
 export interface ProcessoFormData {
   id?: number;
   numero_processo: string;
@@ -42,6 +37,8 @@ export interface ProcessoFormData {
   coordenadas: string;
   zona_urbanistica: string;
   area_m2: number;
+  tipoSolicitacao: TipoSolicitacao; // 'NOVA_LICENCA' ou 'RENOVACAO'
+  numeroLicencaAnterior?: string;   // Ex: Portaria SEDUR nº 123/2024
   modalidade: ModalidadeLicenca;
   cnae_principal: CnaeItem;
   cnaes_secundarios: CnaeItem[];
