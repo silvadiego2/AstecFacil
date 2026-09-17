@@ -29,25 +29,95 @@ export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
 ];
 
 export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
-  { id: 1, nome: 'Requerimento padrão assinado pelo responsável legal ou procurador constituído', obrigatorio: true },
-  { id: 2, nome: 'Comprovante de Inscrição e Situação Cadastral do CNPJ (ativo)', obrigatorio: true },
-  { id: 3, nome: 'Contrato Social consolidado ou última alteração contratual (JUCEB)', obrigatorio: true },
-  { id: 4, nome: 'Documento oficial de identificação dos sócios/administradores (RG/CPF ou CNH-e)', obrigatorio: true },
-  { id: 5, nome: 'Contrato de Locação vigente com firmas reconhecidas ou Escritura Pública do Imóvel', obrigatorio: true },
-  { id: 6, nome: 'Certidão de Inteiro Teor e Ônus do Imóvel atualizada (Cartório de Registro de Imóveis de Camaçari)', obrigatorio: true },
-  { id: 7, nome: 'Certidão Negativa de Débitos Municipais e Imobiliários / IPTU (SEFAZ Camaçari)', obrigatorio: true },
-  { id: 8, nome: 'Comprovante recente da concessionária de energia elétrica (Neoenergia Coelba)', obrigatorio: true },
-  { id: 9, nome: 'Comprovante recente de abastecimento de água e esgotamento sanitário (EMBASA)', obrigatorio: true },
-  { id: 10, nome: 'Relatório de Caracterização do Empreendimento (RCE) detalhado e assinado', obrigatorio: true },
-  { id: 11, nome: 'Arquivo georreferenciado em formato KML/KMZ (SIRGAS 2000) e Croqui de Acesso', obrigatorio: true },
-  { id: 12, nome: 'Alvará de Localização e Funcionamento ou Consulta Prévia de Viabilidade Urbanística', obrigatorio: true },
-  { id: 13, nome: 'Alvará Sanitário emitido pela Vigilância Sanitária Municipal (SESAU/VISA), se aplicável', obrigatorio: false },
-  { id: 14, nome: 'Certificado de Licença do Corpo de Bombeiros Militar (CLCB ou AVCB)', obrigatorio: true },
-  { id: 15, nome: 'Comprovantes de quitação bancária do DAM de Abertura de Processo e da Taxa de Licenciamento', obrigatorio: true },
-  { id: 16, nome: 'Parecer Técnico ou Relatório de Vistoria da DIRAM/CLA (quando realizado)', obrigatorio: false },
-  // Documentos exclusivos de Renovação de LAS:
-  { id: 17, nome: 'Cópia da Portaria / Certificado da Licença Ambiental Simplificada (LAS) anterior', obrigatorio: true, somenteRenovacao: true },
-  { id: 18, nome: 'Relatório Técnico Fotográfico de Cumprimento das Condicionantes da LAS anterior (MTR, laudos e notas)', obrigatorio: true, somenteRenovacao: true },
+  { 
+    id: 1, 
+    nome: 'Requerimento padrão assinado pelo responsável legal ou procurador constituído', 
+    obrigatorio: true 
+  },
+  { 
+    id: 2, 
+    nome: 'Comprovante de Inscrição e Situação Cadastral do CNPJ (ativo)', 
+    obrigatorio: true 
+  },
+  { 
+    id: 3, 
+    nome: 'Contrato Social consolidado ou última alteração contratual registrada na JUCEB', 
+    obrigatorio: true 
+  },
+  { 
+    id: 4, 
+    nome: 'Documento oficial de identificação dos sócios/administradores (RG/CPF ou CNH-e)', 
+    obrigatorio: true 
+  },
+  { 
+    id: 5, 
+    nome: 'Comprovação de Posse/Uso do Imóvel: Contrato de Locação vigente com firmas OU Escritura/Certidão de Inteiro Teor do RGI (se proprietário)', 
+    obrigatorio: true 
+  },
+  { 
+    id: 6, 
+    nome: 'Certidão Negativa de Débitos Municipais e Imobiliários / IPTU (SEFAZ Camaçari)', 
+    obrigatorio: true 
+  },
+  { 
+    id: 7, 
+    nome: 'Consulta Prévia de Viabilidade Urbanística Deferida pela SEDUR/REDESIM (ou Alvará anterior se em atividade)', 
+    obrigatorio: true 
+  },
+  { 
+    id: 8, 
+    nome: 'Relatório de Caracterização do Empreendimento (RCE) detalhado e assinado', 
+    obrigatorio: true 
+  },
+  { 
+    id: 9, 
+    nome: 'Arquivo georreferenciado em formato KML/KMZ (SIRGAS 2000) e Croqui de Acesso', 
+    obrigatorio: true 
+  },
+  { 
+    id: 10, 
+    nome: 'Certificado de Licença do Corpo de Bombeiros Militar (CLCB ou AVCB vigente)', 
+    obrigatorio: true 
+  },
+  { 
+    id: 11, 
+    nome: 'Comprovantes de quitação bancária dos DAMs (Abertura de Processo e Taxa de Licenciamento)', 
+    obrigatorio: true 
+  },
+  // Documentos Condicionais / Não Impeditivos para DLA/Inexigibilidade:
+  { 
+    id: 12, 
+    nome: 'Comprovante de abastecimento de água e esgotamento sanitário (EMBASA) ou solução própria (fossa/outorga)', 
+    obrigatorio: false 
+  },
+  { 
+    id: 13, 
+    nome: 'Comprovante de energia elétrica (Neoenergia Coelba) — do imóvel, condomínio ou locador', 
+    obrigatorio: false 
+  },
+  { 
+    id: 14, 
+    nome: 'Alvará Sanitário emitido pela Vigilância Sanitária Municipal (SESAU/VISA), se aplicável', 
+    obrigatorio: false 
+  },
+  { 
+    id: 15, 
+    nome: 'Parecer Técnico ou Relatório de Vistoria da DIRAM/CLA (quando realizado pelo órgão)', 
+    obrigatorio: false 
+  },
+  // Documentos Exclusivos de Renovação de LAS:
+  { 
+    id: 16, 
+    nome: 'Cópia da Portaria / Certificado da Licença Ambiental Simplificada (LAS) anterior a renovar', 
+    obrigatorio: true, 
+    somenteRenovacao: true 
+  },
+  { 
+    id: 17, 
+    nome: 'Relatório Técnico Fotográfico de Cumprimento das Condicionantes da LAS anterior (MTR, laudos, notas)', 
+    obrigatorio: true, 
+    somenteRenovacao: true 
+  },
 ];
 
 export const PALAVRAS_CHAVE_INDUSTRIA: string[] = [
