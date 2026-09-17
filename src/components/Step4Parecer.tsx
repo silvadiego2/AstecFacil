@@ -31,7 +31,7 @@ export const Step4Parecer: React.FC<Step4Props> = ({
   const [sucessoSalvar, setSucessoSalvar] = useState<string | null>(null);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
-  // Identifica quais documentos OBRIGATÓRIOS aplicáveis não foram marcados
+  // Identifica quais documentos OBRIGATÓRIOS aplicáveis não foram conferidos
   const documentosFaltantes = useMemo(() => {
     const aplicaveis = DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
       if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
@@ -66,15 +66,35 @@ export const Step4Parecer: React.FC<Step4Props> = ({
         ? 'DECLARAÇÃO DE INEXIGIBILIDADE DE LICENCIAMENTO AMBIENTAL'
         : 'LICENÇA AMBIENTAL SIMPLIFICADA (LAS)';
 
+    // Dados interpolados do processo
+    const nomeEmpresa = formData.interessado ? formData.interessado.trim() : '[NOME DA EMPRESA]';
+    const cnpjEmpresa = formData.cnpj ? formData.cnpj.trim() : '[INSERIR CNPJ]';
+    
+    const localizacaoCompleta = [
+      formData.endereco?.trim(),
+      formData.bairro?.trim(),
+      'Camaçari - BA'
+    ].filter(Boolean).join(', ') || '[Localização]';
+
+    const areaDeclarada = formData.area_m2 && formData.area_m2 > 0 
+      ? `${formData.area_m2} m²` 
+      : '[Área Construída Ocupada]';
+
+    const zoneamentoFormatado = formData.zona_urbanistica 
+      ? formData.zona_urbanistica 
+      : '[Zoneamento Urbanístico]';
+
+    // Frase complementar de renovação
+    const complementoRenovacao = formData.modalidade === 'RENOVACAO_LAS'
+      ? ` O pleito de RENOVAÇÃO da licença ambiental foi anteriormente concedida (${formData.numeroLicencaAnterior ? `Portaria/Licença nº ${formData.numeroLicencaAnterior}` : 'Portaria/Licença nº 138/2023'}), tendo o requerente apresentado o relatório de atendimento às condicionantes técnicas exigidas.`
+      : '';
+
+    // Ressalva de atividade fabril em bancada
     const ressalvaIndustrial = formData.possui_atividade_industrial
-      ? `\nRessalta-se que, consoante declarações constantes no Relatório de Caracterização do Empreendimento (RCE), a atividade que ensejou o enquadramento em CNAE secundário fabril restringe-se à montagem artesanal/sob demanda em bancada interna, sem queima de combustíveis fósseis, sem geração de efluentes líquidos industriais e sem emissões atmosféricas poluentes significativas no imóvel sob análise.`
+      ? `\nRessalta-se que, consoante declarações constantes no Relatório de Caracterização do Empreendimento (RCE), a atividade que ensejou o enquadramento em CNAE secundário fabril restringe-se à montagem artesanal/sob demanda em bancada interna, sem queima de combustíveis fósseis, sem geração de efluentes líquidos industriais e sem emissões atmosféricas poluentes significativas no galpão sob análise.`
       : '';
 
-    const contextoRenovacao = formData.modalidade === 'RENOVACAO_LAS'
-      ? `\nTrata-se formalmente de pleito de RENOVAÇÃO da licença ambiental anteriormente concedida (${formData.numeroLicencaAnterior ? `Portaria/Licença nº ${formData.numeroLicencaAnterior}` : 'conforme licença anterior acostada aos autos'}), tendo o requerente apresentado o relatório de atendimento às condicionantes técnicas pregressas e declarado a manutenção das características operacionais, sem ampliação de porte ou alteração da linha tecnológica.`
-      : '';
-
-    // Conclusão baseada na completude documental
+    // Redação da Seção 3 (Conclusão ou Diligência)
     let secaoConclusao = '';
 
     if (formData.status_parecer === 'DILIGENCIA' || temPendenciaDocumental) {
@@ -107,16 +127,16 @@ PARECER TÉCNICO-JURÍDICO AMBIENTAL Nº ASTEC/${formData.numero_processo || 'PR
 À DIRETORIA DE MEIO AMBIENTE - DIRAM
 Assunto: Análise de Enquadramento e Regularidade Ambiental
 Processo Administrativo SIS-SEDUR: ${formData.numero_processo || '[NÃO INFORMADO]'}
-Requerente / Interessado: ${formData.interessado || '[RAZÃO SOCIAL]'}
-CNPJ: ${formData.cnpj || '[00.000.000/0000-00]'}
-Localização: ${formData.endereco || '[ENDEREÇO]'}, ${formData.bairro || '[BAIRRO]'}, Camaçari - BA
+Requerente / Interessado: ${nomeEmpresa}
+CNPJ: ${cnpjEmpresa}
+Localização: ${localizacaoCompleta}
 Coordenadas Geográficas (SIRGAS 2000): ${formData.coordenadas || '[COORDENADAS]'}
-Zoneamento Urbanístico: ${formData.zona_urbanistica || 'ZOUC 1'} (LC nº 1.873/2023 - PDDU)
-Área Construída Ocupada: ${formData.area_m2 ? `${formData.area_m2} m²` : 'Conforme RCE'}
+Zoneamento Urbanístico: ${zoneamentoFormatado} (LC nº 1.873/2023 - PDDU)
+Área Construída Ocupada: ${areaDeclarada}
 Atividade Principal: ${cnaePrinc}
 
 1. RELATÓRIO E INSTRUÇÃO PROCESSUAL
-Trata-se de requerimento administrativo protocolado perante esta SEDUR por meio do qual o interessado acima qualificado postula a outorga de ${modalidadeTexto} para o exercício das atividades econômicas no endereço supracitado.${contextoRenovacao}
+Trata-se de requerimento administrativo referente a solicitação de ${modalidadeTexto}, formulada por ${nomeEmpresa} (CNPJ: ${cnpjEmpresa}) para o empreendimento situado à ${localizacaoCompleta}, com área declarada de ${areaDeclarada}, inserido na ${zoneamentoFormatado}, para o exercício das atividades econômicas supracitada.${complementoRenovacao}
 
 Compulsando os autos, procedeu-se ao exame da instrução documental obrigatória exigida pela legislação ambiental municipal e pelos atos regulamentares da SEDUR.
 
