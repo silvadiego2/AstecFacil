@@ -1,3 +1,4 @@
+// src/components/Step3Documentos.tsx
 import React, { useMemo } from 'react';
 import { FileCheck, CheckSquare, Square, CheckCheck, RotateCcw } from 'lucide-react';
 import { ProcessoFormData } from '../types';
@@ -9,7 +10,7 @@ interface Step3Props {
 }
 
 export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData }) => {
-  // Filtra os documentos: se não for renovação, esconde os exclusivos de renovação
+  // Filtra os documentos aplicáveis (exibe os itens 16 e 17 somente em Renovação de LAS)
   const docsAplicaveis = useMemo(() => {
     return DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
       if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
@@ -39,7 +40,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
     });
   };
 
-  // Preenche rapidamente os documentos que normalmente vêm no protocolo inicial
+  // Marca com 1 clique todos os itens obrigatórios aplicáveis
   const marcarKitPadrao = () => {
     const idsPadrao = docsObrigatorios.map((d: DocumentoBaseItem) => d.id);
     setFormData(prev => ({
@@ -67,7 +68,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
           Etapa 3: Checklist de Conferência Documental (SEDUR)
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Marque os documentos que foram efetivamente juntados aos autos do SIS-SEDUR.
+          Marque os documentos que foram efetivamente juntados aos autos do SIS-SEDUR. Apenas os itens marcados como obrigatórios travam a instrução.
         </p>
       </div>
 
@@ -99,12 +100,12 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
           />
         </div>
 
-        {/* Botões de Ação do Checklist */}
+        {/* Botões de Ação Rápida */}
         <div className="flex flex-wrap justify-between items-center pt-2 gap-2">
           <button
             type="button"
             onClick={marcarKitPadrao}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
           >
             <CheckCheck className="w-4 h-4 text-emerald-400" />
             Marcar Kit Padrão Apresentado
@@ -121,7 +122,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
         </div>
       </div>
 
-      {/* Grid de Itens */}
+      {/* Grid de Itens do Checklist */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {docsAplicaveis.map((doc: DocumentoBaseItem) => {
           const checked = formData.documentos_conferidos.includes(doc.id);
@@ -149,6 +150,11 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
                 {doc.somenteRenovacao && (
                   <span className="ml-2 text-[10px] uppercase font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
                     Renovação
+                  </span>
+                )}
+                {!doc.obrigatorio && (
+                  <span className="ml-2 text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                    Condicional
                   </span>
                 )}
               </div>
