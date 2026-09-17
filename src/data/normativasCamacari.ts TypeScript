@@ -1,4 +1,17 @@
-export const ZONEAMENTOS_CAMACARI = [
+// src/data/normativasCamacari.ts
+
+export interface ZoneamentoItem {
+  valor: string;
+  label: string;
+}
+
+export interface DocumentoBaseItem {
+  id: number;
+  nome: string;
+  obrigatorio: boolean;
+}
+
+export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
   { valor: 'ZOUC 1', label: 'ZOUC 1 - Zona de Ocupação Urbana Consolidada 1' },
   { valor: 'ZOUC 2', label: 'ZOUC 2 - Zona de Ocupação Urbana Consolidada 2' },
   { valor: 'ZDC 1', label: 'ZDC 1 - Zona de Desenvolvimento e Comércio 1' },
@@ -14,7 +27,7 @@ export const ZONEAMENTOS_CAMACARI = [
   { valor: 'ZPA', label: 'ZPA - Zona de Proteção Ambiental' },
 ];
 
-export const DOCUMENTOS_BASE_CAMACARI = [
+export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
   { id: 1, nome: 'Requerimento padrão assinado pelo responsável legal ou procurador constituído', obrigatorio: true },
   { id: 2, nome: 'Comprovante de Inscrição e Situação Cadastral do CNPJ (ativo)', obrigatorio: true },
   { id: 3, nome: 'Contrato Social consolidado ou última alteração contratual (JUCEB)', obrigatorio: true },
@@ -33,16 +46,16 @@ export const DOCUMENTOS_BASE_CAMACARI = [
   { id: 16, nome: 'Parecer Técnico ou Relatório de Vistoria da DIRAM/CLA (quando realizado)', obrigatorio: false },
 ];
 
-export const PALAVRAS_CHAVE_INDUSTRIA = [
+export const PALAVRAS_CHAVE_INDUSTRIA: string[] = [
   'fabricacao', 'fabricação', 'producao', 'produção', 'usinagem', 'tintas',
   'corte termico', 'corte térmico', 'alimentos', 'metalurgica', 'metalúrgica',
   'quimica', 'química', 'plastico', 'plástico', 'torno', 'solda', 'revestimento'
 ];
 
 export const FUNDAMENTACAO_LEGAL = {
-  codigoMeioAmbiente: 'Lei Complementar Municipal nº 1.876/2023 (Código de Meio Ambiente do Município de Camaçari, Anexo IV)',
-  pddu: 'Lei Complementar Municipal nº 1.873/2023 (Plano Diretor de Desenvolvimento Urbano de Camaçari - PDDU)',
-  codigoUrbanistico: 'Lei Complementar Municipal nº 1.874/2023 (Código Urbanístico e de Obras de Camaçari)',
-  decretoEstadual: 'Decreto Estadual da Bahia nº 14.024/2012 e alterações posteriores',
-  cepram: 'Resoluções CEPRAM nº 4.327/2013 e nº 4.579/2018 (Impacto Local e Atividades Dispensadas/Simplificadas)'
+  codigoMeioAmbiente: 'Lei Complementar Municipal nº 1.876/2023 (Código de Meio Ambiente de Camaçari, Anexo IV)',
+  pddu: 'Lei Complementar Municipal nº 1.873/2023 (PDDU Camaçari)',
+  codigoUrbanistico: 'Lei Complementar Municipal nº 1.874/2023 (Código Urbanístico de Camaçari)',
+  decretoEstadual: 'Decreto Estadual da Bahia nº 14.024/2012',
+  cepram: 'Resoluções CEPRAM nº 4.327/2013 e nº 4.579/2018'
 };
