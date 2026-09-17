@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { 
   Building, 
@@ -29,10 +30,12 @@ const ESTADO_INICIAL: ProcessoFormData = {
   coordenadas: '',
   zona_urbanistica: 'ZOUC 1',
   area_m2: 0,
+  tipoSolicitacao: 'NOVA_LICENCA',
+  numeroLicencaAnterior: '',
   modalidade: 'DISPENSA',
   cnae_principal: { codigo: '', descricao: '' },
   cnaes_secundarios: [],
-  documentos_conferidos: [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 15],
+  documentos_conferidos: [], // Inicia vazio para auditoria técnica real
   status_parecer: 'DEFERIMENTO',
   texto_parecer: '',
   possui_atividade_industrial: false,
@@ -84,11 +87,13 @@ export default function App() {
       coordenadas: proc.coordenadas,
       zona_urbanistica: proc.zona_urbanistica,
       area_m2: parseFloat(proc.area_m2) || 0,
+      tipoSolicitacao: proc.modalidade === 'RENOVACAO_LAS' ? 'RENOVACAO' : 'NOVA_LICENCA',
+      numeroLicencaAnterior: proc.numeroLicencaAnterior || '',
       modalidade: proc.modalidade,
       cnae_principal: { codigo: '', descricao: '' },
       cnaes_secundarios: [],
       documentos_conferidos: proc.documentos_conferidos || [],
-      status_parecer: proc.status_parecer,
+      status_parecer: proc.status_parecer || 'DEFERIMENTO',
       texto_parecer: proc.texto_parecer,
       possui_atividade_industrial: false,
       declaracao_artesanal_bancada: false,
@@ -106,7 +111,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
-      {/* Topo do Header Governamental */}
+      {/* Header Governamental */}
       <header className="bg-slate-900 text-white border-b-4 border-emerald-600 shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -116,7 +121,7 @@ export default function App() {
             <div>
               <h1 className="text-xl font-bold tracking-tight">ASTEC Fácil - SEDUR Camaçari</h1>
               <p className="text-xs text-slate-300">
-                Assessoria Técnica Ambiental Municipal | Triagem de DLA, LAS e Inexigibilidade
+                Assessoria Técnica Ambiental Municipal | Triagem de DLA, LAS, Inexigibilidade e Renovação
               </p>
             </div>
           </div>
@@ -127,7 +132,7 @@ export default function App() {
             className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg flex items-center gap-2 border border-slate-700 transition"
           >
             <History className="w-4 h-4 text-emerald-400" />
-            Processos Salvos (MySQL)
+            Processos Salvos
           </button>
         </div>
       </header>
@@ -211,16 +216,16 @@ export default function App() {
               Anterior
             </button>
 
-         {etapaAtual < 4 && (
-  <button
-    type="button"
-    onClick={() => setEtapaAtual(p => Math.min(4, p + 1))}
-    className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center gap-1.5 transition shadow"
-  >
-    Próxima Etapa
-    <ChevronRight className="w-4 h-4" />
-  </button>
-)}
+            {etapaAtual < 4 && (
+              <button
+                type="button"
+                onClick={() => setEtapaAtual(p => Math.min(4, p + 1))}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center gap-1.5 transition shadow"
+              >
+                Próxima Etapa
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </main>
@@ -232,7 +237,7 @@ export default function App() {
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <History className="w-5 h-5 text-emerald-600" />
-                Processos Cadastrados no MySQL (HostGator)
+                Processos Cadastrados
               </h3>
               <button
                 type="button"
@@ -261,7 +266,7 @@ export default function App() {
                 <p className="text-center py-8 text-sm text-slate-500">Carregando processos...</p>
               ) : processosSalvos.length === 0 ? (
                 <p className="text-center py-8 text-sm text-slate-500">
-                  Nenhum processo salvo encontrado no banco de dados.
+                  Nenhum processo salvo encontrado.
                 </p>
               ) : (
                 processosSalvos.map(proc => (
@@ -274,8 +279,12 @@ export default function App() {
                         <span className="font-mono font-bold text-sm text-slate-900">
                           {proc.numero_processo}
                         </span>
-                        <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold">
-                          {proc.modalidade}
+                        <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                          proc.modalidade === 'RENOVACAO_LAS' 
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {proc.modalidade === 'RENOVACAO_LAS' ? 'RENOVAÇÃO LAS' : proc.modalidade}
                         </span>
                       </div>
                       <div className="text-sm font-semibold text-slate-700 mt-1">
@@ -298,7 +307,7 @@ export default function App() {
                         type="button"
                         onClick={() => handleExcluirProcesso(proc.id)}
                         className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                        title="Excluir do Banco"
+                        title="Excluir"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
