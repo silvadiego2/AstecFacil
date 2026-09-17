@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
-import { ShieldAlert, CheckCircle2, AlertTriangle, Layers, Cpu, Store } from 'lucide-react';
+import React, { useMemo, useEffect } from 'react';
+import { ShieldAlert, CheckCircle2, AlertTriangle, Cpu, Store, RefreshCw, Sparkles } from 'lucide-react';
 import { ProcessoFormData, ModalidadeLicenca } from '../types';
-import { PALAVRAS_CHAVE_INDUSTRIA, FUNDAMENTACAO_LEGAL } from '../data/normativasCamacari';
+import { PALAVRAS_CHAVE_INDUSTRIA } from '../data/normativasCamacari';
 
 interface Step2Props {
   formData: ProcessoFormData;
@@ -9,7 +9,6 @@ interface Step2Props {
 }
 
 export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData }) => {
-  // Lista unificada de todos os CNAEs da empresa
   const todosCnaes = useMemo(() => {
     const lista = [];
     if (formData.cnae_principal?.descricao) {
@@ -21,17 +20,15 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
     return lista;
   }, [formData.cnae_principal, formData.cnaes_secundarios]);
 
-  // Detector automático de CNAE fabril/industrial
   const cnaesIndustriais = useMemo(() => {
     return todosCnaes.filter(item => {
       const desc = item.descricao.toLowerCase();
-      return PALAVRAS_CHAVE_INDUSTRIA.some(kw => desc.includes(kw));
+      return PALAVRAS_CHAVE_INDUSTRIA.some((kw: string) => desc.includes(kw));
     });
   }, [todosCnaes]);
 
   const temAtividadeFabril = cnaesIndustriais.length > 0;
 
-  // Se todos forem comércio ou serviço de escritório
   const isApenasComercioSeco = useMemo(() => {
     if (todosCnaes.length === 0) return false;
     return todosCnaes.every(item => {
@@ -45,9 +42,28 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
         desc.includes('escritório') ||
         desc.includes('consultoria') ||
         desc.includes('treinamento')
-      ) && !PALAVRAS_CHAVE_INDUSTRIA.some(kw => desc.includes(kw));
+      ) && !PALAVRAS_CHAVE_INDUSTRIA.some((kw: string) => desc.includes(kw));
     });
   }, [todosCnaes]);
+
+  // ENQUADRAMENTO AUTOMÁTICO INTELIGENTE
+  useEffect(() => {
+    if (formData.tipoSolicitacao === 'RENOVACAO') {
+      if (formData.modalidade !== 'RENOVACAO_LAS') {
+        setFormData(p => ({ ...p, modalidade: 'RENOVACAO_LAS', possui_atividade_industrial: temAtividadeFabril }));
+      }
+    } else if (temAtividadeFabril) {
+      // Se tiver indústria e não for renovação, o padrão seguro é LAS
+      if (formData.modalidade !== 'LAS' && formData.modalidade !== 'DISPENSA') {
+        setFormData(p => ({ ...p, modalidade: 'LAS', possui_atividade_industrial: true }));
+      }
+    } else if (isApenasComercioSeco) {
+      // Se for comércio puro, enquadra em Dispensa
+      if (formData.modalidade !== 'DISPENSA' && formData.modalidade !== 'INEXIGIBILIDADE') {
+        setFormData(p => ({ ...p, modalidade: 'DISPENSA', possui_atividade_industrial: false }));
+      }
+    }
+  }, [formData.tipoSolicitacao, temAtividadeFabril, isApenasComercioSeco]);
 
   const handleModalidadeSelect = (mod: ModalidadeLicenca) => {
     setFormData(prev => ({
@@ -65,12 +81,27 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
           Etapa 2: Inteligência de Enquadramento Legal e Análise de CNAE
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Cruzamento dos códigos CNAE com o Anexo IV da Lei Complementar Municipal nº 1.876/2023 e Resoluções CEPRAM nº 4.327/2013 e 4.579/2018.
+          O sistema avaliou automaticamente o perfil do empreendimento com base na LC nº 1.876/2023 e Resoluções CEPRAM.
         </p>
       </div>
 
-      {/* BANNER 1: Caso A - Comércio Seco / Atipicidade */}
-      {isApenasComercioSeco && (
+      {/* Badge de Indicação de Enquadramento Automático */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-blue-900 text-xs">
+        <span className="flex items-center gap-2 font-medium">
+          <Sparkles className="w-4 h-4 text-blue-600" />
+          Enquadramento sugerido pelo sistema: <strong>{
+            formData.modalidade === 'RENOVACAO_LAS' ? 'Renovação de LAS' :
+            formData.modalidade === 'DISPENSA' ? 'Dispensa de Licença (DLA)' :
+            formData.modalidade === 'LAS' ? 'Licença Ambiental Simplificada (LAS)' : 'Inexigibilidade'
+          }</strong>
+        </span>
+        <span className="text-[11px] text-blue-600 bg-blue-100 px-2 py-0.5 rounded font-semibold">
+          Auto-Identificado
+        </span>
+      </div>
+
+      {/* BANNER 1: Comércio Seco */}
+      {isApenasComercioSeco && formData.tipoSolicitacao !== 'RENOVACAO' && (
         <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl flex items-start gap-3">
           <Store className="w-6 h-6 text-emerald-600 flex-shrink-0 mt-0.5" />
           <div>
@@ -78,16 +109,13 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
               Atipicidade Identificada (Comércio Seco / Serviços Administrativos)
             </h3>
             <p className="text-sm text-emerald-800 mt-1">
-              Todos os CNAEs informados correspondem a atividades estritamente comerciais ou administrativas, sem estocagem de produtos perigosos ou processamento químico/físico no galpão.
-            </p>
-            <p className="text-xs text-emerald-700 mt-2 font-medium">
-              Sugestão automática da ASTEC: <strong>Dispensa de Licença Ambiental (DLA)</strong> ou <strong>Declaração de Inexigibilidade</strong>.
+              Todos os CNAEs informados correspondem a atividades estritamente comerciais ou administrativas. Enquadramento padrão recomendado: <strong>Dispensa de Licença Ambiental (DLA)</strong>.
             </p>
           </div>
         </div>
       )}
 
-      {/* BANNER 2: Caso B - Alerta Vermelho (Atividade Industrial Detectada) */}
+      {/* BANNER 2: Alerta Vermelho de Atividade Industrial */}
       {temAtividadeFabril && formData.modalidade === 'DISPENSA' && (
         <div className="p-5 bg-rose-50 border-2 border-rose-400 rounded-xl flex items-start gap-3 shadow-sm">
           <ShieldAlert className="w-7 h-7 text-rose-600 flex-shrink-0 mt-0.5" />
@@ -113,34 +141,43 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
         </div>
       )}
 
+      {/* BANNER 3: Renovação de LAS */}
+      {formData.tipoSolicitacao === 'RENOVACAO' && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
+          <RefreshCw className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-amber-900">
+              Processo de Renovação de Licença Ambiental Simplificada (RLAS)
+            </h3>
+            <p className="text-sm text-amber-800 mt-1">
+              Conforme o Art. 14 da LC nº 1.876/2023, a renovação deve verificar o histórico de cumprimento das condicionantes da licença anterior e atestar que não houve ampliação física ou alteração na linha operacional.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Tabela de CNAEs Identificados */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center justify-between">
-          <span>Atividades Econômicas Identificadas na Receita Federal</span>
+          <span>Atividades Econômicas da Empresa (Receita Federal)</span>
           <span className="text-xs font-normal text-slate-500">{todosCnaes.length} atividades cadastradas</span>
         </h3>
 
         {todosCnaes.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">
-            Nenhum CNAE carregado. Volte à Etapa 1 e consulte o CNPJ ou digite manualmente.
-          </p>
+          <p className="text-sm text-slate-500 italic">Nenhum CNAE informado na Etapa 1.</p>
         ) : (
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
             {todosCnaes.map((c, idx) => {
-              const isInd = PALAVRAS_CHAVE_INDUSTRIA.some(k => c.descricao.toLowerCase().includes(k));
+              const isInd = PALAVRAS_CHAVE_INDUSTRIA.some((k: string) => c.descricao.toLowerCase().includes(k));
               return (
                 <div
                   key={idx}
                   className={`p-2.5 rounded-lg border text-sm flex items-start justify-between gap-3 ${
-                    isInd
-                      ? 'bg-rose-50/70 border-rose-200 text-rose-900'
-                      : 'bg-white border-slate-200 text-slate-800'
+                    isInd ? 'bg-rose-50/70 border-rose-200 text-rose-900' : 'bg-white border-slate-200 text-slate-800'
                   }`}
                 >
                   <div>
-                    <span className="font-mono font-bold text-xs mr-2 text-slate-600">
-                      {c.codigo}
-                    </span>
+                    <span className="font-mono font-bold text-xs mr-2 text-slate-600">{c.codigo}</span>
                     <span className="font-medium">{c.descricao}</span>
                     {c.principal && (
                       <span className="ml-2 text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded-full font-semibold">
@@ -160,12 +197,12 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
         )}
       </div>
 
-      {/* Seletor Manual da Modalidade Final */}
+      {/* Seletor Manual com 4 Opções */}
       <div>
         <label className="block text-sm font-bold text-slate-800 mb-3">
-          Seletor de Modalidade Recomendada pela ASTEC:
+          Modalidade Adotada no Parecer da ASTEC:
         </label>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <button
             type="button"
             onClick={() => handleModalidadeSelect('DISPENSA')}
@@ -175,13 +212,11 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
                 : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-bold text-base">Dispensa (DLA)</span>
-              {formData.modalidade === 'DISPENSA' && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-sm">Dispensa (DLA)</span>
+              {formData.modalidade === 'DISPENSA' && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Atividades de baixo ou insignificante potencial poluidor (Anexo IV da LC 1.876/2023 e Res. CEPRAM).
-            </p>
+            <p className="text-xs text-slate-600">Baixo ou insignificante impacto poluidor.</p>
           </button>
 
           <button
@@ -193,13 +228,11 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
                 : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-bold text-base">Inexigibilidade</span>
-              {formData.modalidade === 'INEXIGIBILIDADE' && <CheckCircle2 className="w-5 h-5 text-blue-600" />}
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-sm">Inexigibilidade</span>
+              {formData.modalidade === 'INEXIGIBILIDADE' && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Atividades não constantes no rol de licenciamento obrigatório (comércio seco, serviços de escritório).
-            </p>
+            <p className="text-xs text-slate-600">Atividade não passível de licenciamento.</p>
           </button>
 
           <button
@@ -211,13 +244,27 @@ export const Step2Enquadramento: React.FC<Step2Props> = ({ formData, setFormData
                 : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-bold text-base">Licença Simplificada (LAS)</span>
-              {formData.modalidade === 'LAS' && <CheckCircle2 className="w-5 h-5 text-amber-600" />}
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-sm">Licença Simplificada</span>
+              {formData.modalidade === 'LAS' && <CheckCircle2 className="w-4 h-4 text-amber-600" />}
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Empreendimentos de pequeno porte e baixo/médio potencial poluidor com rito unificado.
-            </p>
+            <p className="text-xs text-slate-600">Pequeno porte com potencial poluidor baixo/médio.</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleModalidadeSelect('RENOVACAO_LAS')}
+            className={`p-4 rounded-xl border-2 text-left transition ${
+              formData.modalidade === 'RENOVACAO_LAS'
+                ? 'border-purple-600 bg-purple-50 text-purple-950 ring-2 ring-purple-400'
+                : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-sm">Renovação de LAS</span>
+              {formData.modalidade === 'RENOVACAO_LAS' && <CheckCircle2 className="w-4 h-4 text-purple-600" />}
+            </div>
+            <p className="text-xs text-slate-600">Revalidação de licença anterior vigente.</p>
           </button>
         </div>
       </div>
