@@ -9,6 +9,7 @@ export interface DocumentoBaseItem {
   id: number;
   nome: string;
   obrigatorio: boolean;
+  somenteRenovacao?: boolean;
 }
 
 export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
@@ -42,8 +43,11 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
   { id: 12, nome: 'Alvará de Localização e Funcionamento ou Consulta Prévia de Viabilidade Urbanística', obrigatorio: true },
   { id: 13, nome: 'Alvará Sanitário emitido pela Vigilância Sanitária Municipal (SESAU/VISA), se aplicável', obrigatorio: false },
   { id: 14, nome: 'Certificado de Licença do Corpo de Bombeiros Militar (CLCB ou AVCB)', obrigatorio: true },
-  { id: 15, nome: 'Comprovantes de quitação bancária do DAM de Abertura de Processo e da Taxa de DLA/LAS', obrigatorio: true },
+  { id: 15, nome: 'Comprovantes de quitação bancária do DAM de Abertura de Processo e da Taxa de Licenciamento', obrigatorio: true },
   { id: 16, nome: 'Parecer Técnico ou Relatório de Vistoria da DIRAM/CLA (quando realizado)', obrigatorio: false },
+  // Documentos exclusivos de Renovação de LAS:
+  { id: 17, nome: 'Cópia da Portaria / Certificado da Licença Ambiental Simplificada (LAS) anterior', obrigatorio: true, somenteRenovacao: true },
+  { id: 18, nome: 'Relatório Técnico Fotográfico de Cumprimento das Condicionantes da LAS anterior (MTR, laudos e notas)', obrigatorio: true, somenteRenovacao: true },
 ];
 
 export const PALAVRAS_CHAVE_INDUSTRIA: string[] = [
@@ -53,7 +57,7 @@ export const PALAVRAS_CHAVE_INDUSTRIA: string[] = [
 ];
 
 export const FUNDAMENTACAO_LEGAL = {
-  codigoMeioAmbiente: 'Lei Complementar Municipal nº 1.876/2023 (Código de Meio Ambiente de Camaçari, Anexo IV)',
+  codigoMeioAmbiente: 'Lei Complementar Municipal nº 1.876/2023 (Código de Meio Ambiente de Camaçari, Anexo IV e Art. 14)',
   pddu: 'Lei Complementar Municipal nº 1.873/2023 (PDDU Camaçari)',
   codigoUrbanistico: 'Lei Complementar Municipal nº 1.874/2023 (Código Urbanístico de Camaçari)',
   decretoEstadual: 'Decreto Estadual da Bahia nº 14.024/2012',
