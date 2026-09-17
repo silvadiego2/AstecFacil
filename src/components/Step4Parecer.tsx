@@ -31,7 +31,7 @@ export const Step4Parecer: React.FC<Step4Props> = ({
   const [sucessoSalvar, setSucessoSalvar] = useState<string | null>(null);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
-  // Identifica documentos obrigatórios faltantes
+  // Identifica quais documentos OBRIGATÓRIOS aplicáveis não foram marcados
   const documentosFaltantes = useMemo(() => {
     const aplicaveis = DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
       if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
@@ -45,7 +45,7 @@ export const Step4Parecer: React.FC<Step4Props> = ({
 
   const temPendenciaDocumental = documentosFaltantes.length > 0;
 
-  // Gerador automático do Parecer Técnico-Jurídico
+  // Gerador dinâmico do Parecer da ASTEC
   const gerarParecerAutomatico = () => {
     const dataExtenso = new Intl.DateTimeFormat('pt-BR', {
       day: 'numeric',
@@ -66,17 +66,15 @@ export const Step4Parecer: React.FC<Step4Props> = ({
         ? 'DECLARAÇÃO DE INEXIGIBILIDADE DE LICENCIAMENTO AMBIENTAL'
         : 'LICENÇA AMBIENTAL SIMPLIFICADA (LAS)';
 
-    // Ressalva industrial quando aplicável
     const ressalvaIndustrial = formData.possui_atividade_industrial
-      ? `\nRessalta-se que, consoante declarações constantes no Relatório de Caracterização do Empreendimento (RCE), a atividade que ensejou o enquadramento em CNAE secundário fabril restringe-se à montagem artesanal/sob demanda em bancada interna, sem queima de combustíveis fósseis, sem geração de efluentes líquidos industriais e sem emissões atmosféricas poluentes significativas no galpão sob análise.`
+      ? `\nRessalta-se que, consoante declarações constantes no Relatório de Caracterização do Empreendimento (RCE), a atividade que ensejou o enquadramento em CNAE secundário fabril restringe-se à montagem artesanal/sob demanda em bancada interna, sem queima de combustíveis fósseis, sem geração de efluentes líquidos industriais e sem emissões atmosféricas poluentes significativas no imóvel sob análise.`
       : '';
 
-    // Contexto específico de Renovação
     const contextoRenovacao = formData.modalidade === 'RENOVACAO_LAS'
-      ? `\nTrata-se formalmente de pleito de RENOVAÇÃO da licença ambiental anteriormente outorgada (${formData.numeroLicencaAnterior ? `Portaria/Licença nº ${formData.numeroLicencaAnterior}` : 'conforme licença anterior acostada aos autos'}), tendo o requerente apresentado o relatório de atendimento às condicionantes técnicas pregressas e declarado a manutenção das características originais de operação, sem ampliação de porte ou alteração da linha tecnológica.`
+      ? `\nTrata-se formalmente de pleito de RENOVAÇÃO da licença ambiental anteriormente concedida (${formData.numeroLicencaAnterior ? `Portaria/Licença nº ${formData.numeroLicencaAnterior}` : 'conforme licença anterior acostada aos autos'}), tendo o requerente apresentado o relatório de atendimento às condicionantes técnicas pregressas e declarado a manutenção das características operacionais, sem ampliação de porte ou alteração da linha tecnológica.`
       : '';
 
-    // Análise documental e conclusão
+    // Conclusão baseada na completude documental
     let secaoConclusao = '';
 
     if (formData.status_parecer === 'DILIGENCIA' || temPendenciaDocumental) {
@@ -85,7 +83,7 @@ export const Step4Parecer: React.FC<Step4Props> = ({
         : '   1. Complementação de esclarecimentos técnicos sobre o processo operacional.';
 
       secaoConclusao = `3. CONCLUSÃO E PROPOSIÇÃO DE DILIGÊNCIA TÉCNICA
-Da análise dos autos eletrônicos, constata-se a AUSÊNCIA de documentos e elementos indispensáveis à conclusão do mérito ambiental, restando pendente a juntada dos seguintes itens:
+Da análise dos autos eletrônicos, constata-se a AUSÊNCIA de elementos obrigatórios indispensáveis à conclusão do mérito ambiental, restando pendente a juntada dos seguintes itens:
 ${listaPendencias}
 
 Diante do exposto, esta Assessoria Técnica manifesta-se pela BAIXA DOS AUTOS EM DILIGÊNCIA, sugerindo a notificação do requerente via SIS-SEDUR para que, no prazo improrrogável de 30 (trinta) dias, promova a integral regularização da instrução documental, sob pena de indeferimento e arquivamento do feito.`;
@@ -94,8 +92,8 @@ Diante do exposto, esta Assessoria Técnica manifesta-se pela BAIXA DOS AUTOS EM
 Isto posto, devidamente instruído o feito e atendidos os preceitos normativos vigentes, esta Assessoria Técnica - ASTEC manifesta-se favorável ao DEFERIMENTO e VALIDAÇÃO do pedido de ${modalidadeTexto}, condicionada a sua plena eficácia à observância das seguintes condicionantes e salvaguardas:
 
 a) Fica expressamente VEDADA qualquer manipulação, estocagem a granel ou fracionamento de produtos químicos perigosos ou inflamáveis não licenciados especificamente perante esta SEDUR;
-b) Proibição absoluta de implantação de lava-jato de frotas, posto interno de abastecimento ou oficina mecânica pesada no galpão sem licenciamento ambiental próprio;
-c) Manutenção em plena vigência do Alvará de Localização e Funcionamento, do Alvará Sanitário emitido pela SESAU/VISA e do Certificado de Licença do Corpo de Bombeiros Militar (AVCB/CLCB);
+b) Proibição absoluta de implantação de lava-jato de frotas, posto interno de abastecimento ou oficina mecânica pesada no galpão sem licenciamento ambiental autônomo;
+c) Manutenção em plena vigência da Consulta de Viabilidade Urbanística / Alvará de Localização e Funcionamento, do Alvará Sanitário emitido pela SESAU/VISA e do Certificado de Licença do Corpo de Bombeiros Militar (AVCB/CLCB);
 d) Correto acondicionamento e destinação ambientalmente adequada de todos os resíduos sólidos gerados, mantendo em arquivo comprobatório os Manifestos de Transporte de Resíduos (MTR/SINIR) e notas fiscais de destinação final licenciada.
 
 Encaminhem-se os autos à DIRETORIA DE MEIO AMBIENTE - DIRAM para homologação final e expedição do respectivo ato autorizativo.`;
@@ -138,7 +136,6 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
     setFormData(prev => ({ ...prev, texto_parecer: texto }));
   };
 
-  // Atualiza parecer quando a tela abre ou status muda
   useEffect(() => {
     if (!formData.texto_parecer) {
       gerarParecerAutomatico();
@@ -200,7 +197,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
         </button>
       </div>
 
-      {/* Alerta de Documentação Faltante / Recomendação de Conclusão */}
+      {/* Alerta de Documentação Faltante / Recomendação */}
       {temPendenciaDocumental ? (
         <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -209,7 +206,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
               Atenção: Há {documentosFaltantes.length} documento(s) obrigatório(s) não conferido(s)
             </h3>
             <p className="text-xs text-amber-800 mt-1">
-              Para processos incompletos, a recomendação técnica é a <strong>Baixa em Diligência</strong> para notificação do requerente no SIS-SEDUR.
+              Para processos com pendência, a recomendação da ASTEC é a <strong>Baixa em Diligência</strong> para notificação no SIS-SEDUR.
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -217,7 +214,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
                 onClick={() => handleMudarStatus('DILIGENCIA')}
                 className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
                   formData.status_parecer === 'DILIGENCIA'
-                    ? 'bg-amber-600 text-white border-amber-700'
+                    ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
                     : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-100'
                 }`}
               >
@@ -228,7 +225,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
                 onClick={() => handleMudarStatus('DEFERIMENTO')}
                 className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
                   formData.status_parecer === 'DEFERIMENTO'
-                    ? 'bg-emerald-600 text-white border-emerald-700'
+                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
                     : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                 }`}
               >
