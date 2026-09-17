@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { FileCheck, CheckSquare, Square, AlertOctagon } from 'lucide-react';
+import { FileCheck, CheckSquare, Square, CheckCheck, RotateCcw } from 'lucide-react';
 import { ProcessoFormData } from '../types';
-import { DOCUMENTOS_BASE_CAMACARI } from '../data/normativasCamacari';
+import { DOCUMENTOS_BASE_CAMACARI, DocumentoBaseItem } from '../data/normativasCamacari';
 
 interface Step3Props {
   formData: ProcessoFormData;
@@ -9,6 +9,26 @@ interface Step3Props {
 }
 
 export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData }) => {
+  // Filtra os documentos: se não for renovação, esconde os exclusivos de renovação
+  const docsAplicaveis = useMemo(() => {
+    return DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
+      if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
+        return false;
+      }
+      return true;
+    });
+  }, [formData.modalidade]);
+
+  const docsObrigatorios = useMemo(
+    () => docsAplicaveis.filter((d: DocumentoBaseItem) => d.obrigatorio),
+    [docsAplicaveis]
+  );
+
+  const obrigatoriosConferidos = useMemo(
+    () => docsObrigatorios.filter((d: DocumentoBaseItem) => formData.documentos_conferidos.includes(d.id)),
+    [docsObrigatorios, formData.documentos_conferidos]
+  );
+
   const toggleDoc = (id: number) => {
     setFormData(prev => {
       const existe = prev.documentos_conferidos.includes(id);
@@ -19,10 +39,13 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
     });
   };
 
-  const selecionarTodos = () => {
+  // Preenche rapidamente os documentos que normalmente vêm no protocolo inicial
+  const marcarKitPadrao = () => {
+    const idsPadrao = docsObrigatorios.map((d: DocumentoBaseItem) => d.id);
     setFormData(prev => ({
       ...prev,
-      documentos_conferidos: DOCUMENTOS_BASE_CAMACARI.map(d => d.id),
+      documentos_conferidos: idsPadrao,
+      status_parecer: 'DEFERIMENTO',
     }));
   };
 
@@ -30,38 +53,32 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
     setFormData(prev => ({ ...prev, documentos_conferidos: [] }));
   };
 
-  // Cálculo de completude com base nos obrigatórios
-  const docsObrigatorios = useMemo(() => DOCUMENTOS_BASE_CAMACARI.filter(d => d.obrigatorio), []);
-  const obrigatoriosConferidos = useMemo(
-    () => docsObrigatorios.filter(d => formData.documentos_conferidos.includes(d.id)),
-    [docsObrigatorios, formData.documentos_conferidos]
-  );
+  const percentualConcluido = docsAplicaveis.length > 0
+    ? Math.round((formData.documentos_conferidos.length / docsAplicaveis.length) * 100)
+    : 0;
 
-  const percentualConcluido = Math.round(
-    (formData.documentos_conferidos.length / DOCUMENTOS_BASE_CAMACARI.length) * 100
-  );
-  const instrucaoCompleta = obrigatoriosConferidos.length === docsObrigatorios.length;
+  const instrucaoCompleta = docsObrigatorios.length > 0 && obrigatoriosConferidos.length === docsObrigatorios.length;
 
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
           <FileCheck className="w-6 h-6 text-slate-700" />
-          Etapa 3: Checklist Interativo de Documentação SEDUR
+          Etapa 3: Checklist de Conferência Documental (SEDUR)
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Conferência dos 16 itens obrigatórios para emissão de atos ambientais da SEDUR Camaçari.
+          Marque os documentos que foram efetivamente juntados aos autos do SIS-SEDUR.
         </p>
       </div>
 
       {/* Card da Barra de Progresso */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <span className="text-sm font-bold text-slate-800">
-            Nível de Instrução Processual: {percentualConcluido}%
+            Instrução Processual: {percentualConcluido}% ({formData.documentos_conferidos.length} de {docsAplicaveis.length} conferidos)
           </span>
           <span
-            className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full self-start sm:self-auto ${
               instrucaoCompleta
                 ? 'bg-emerald-100 text-emerald-800'
                 : 'bg-amber-100 text-amber-800'
@@ -69,51 +86,44 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
           >
             {instrucaoCompleta
               ? 'Processo plenamente instruído'
-              : `Pendentes: ${docsObrigatorios.length - obrigatoriosConferidos.length} documento(s) obrigatório(s)`}
+              : `Faltam ${docsObrigatorios.length - obrigatoriosConferidos.length} documento(s) obrigatório(s)`}
           </span>
         </div>
 
-        {/* Barra de Progresso com Tailwind */}
         <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
           <div
             className={`h-full transition-all duration-300 ${
-              percentualConcluido === 100
-                ? 'bg-emerald-600'
-                : percentualConcluido >= 70
-                ? 'bg-blue-600'
-                : 'bg-amber-500'
+              instrucaoCompleta ? 'bg-emerald-600' : 'bg-amber-500'
             }`}
             style={{ width: `${percentualConcluido}%` }}
           />
         </div>
 
-        <div className="flex justify-between items-center pt-2">
-          <span className="text-xs text-slate-500">
-            {formData.documentos_conferidos.length} de {DOCUMENTOS_BASE_CAMACARI.length} itens conferidos
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={selecionarTodos}
-              className="text-xs font-semibold text-slate-700 hover:text-slate-900 underline"
-            >
-              Marcar todos
-            </button>
-            <span className="text-slate-300">|</span>
-            <button
-              type="button"
-              onClick={desmarcarTodos}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-700 underline"
-            >
-              Desmarcar todos
-            </button>
-          </div>
+        {/* Botões de Ação do Checklist */}
+        <div className="flex flex-wrap justify-between items-center pt-2 gap-2">
+          <button
+            type="button"
+            onClick={marcarKitPadrao}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+          >
+            <CheckCheck className="w-4 h-4 text-emerald-400" />
+            Marcar Kit Padrão Apresentado
+          </button>
+
+          <button
+            type="button"
+            onClick={desmarcarTodos}
+            className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 underline font-medium"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Limpar seleção
+          </button>
         </div>
       </div>
 
-      {/* Grid de Itens do Checklist */}
+      {/* Grid de Itens */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {DOCUMENTOS_BASE_CAMACARI.map(doc => {
+        {docsAplicaveis.map((doc: DocumentoBaseItem) => {
           const checked = formData.documentos_conferidos.includes(doc.id);
           return (
             <div
@@ -132,8 +142,13 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
                 <span className="font-bold mr-1.5 text-slate-800">#{doc.id}</span>
                 <span>{doc.nome}</span>
                 {doc.obrigatorio && (
-                  <span className="ml-2 text-[10px] uppercase font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
+                  <span className="ml-2 text-[10px] uppercase font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
                     Obrigatório
+                  </span>
+                )}
+                {doc.somenteRenovacao && (
+                  <span className="ml-2 text-[10px] uppercase font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                    Renovação
                   </span>
                 )}
               </div>
