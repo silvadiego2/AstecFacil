@@ -211,18 +211,16 @@ export default function App() {
               Anterior
             </button>
 
-            {etapaAtual < 4 && (
-              <button
-                type="button"
-                onClick={() => setEtapaAtual(p => Math.min(4, p + 1))}
-                classNametype="button"
-                onClick={() => setEtapaAtual(p => Math.min(4, p + 1))}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center gap-1.5 transition shadow"
-              >
-                Próxima Etapa
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
+         {etapaAtual < 4 && (
+  <button
+    type="button"
+    onClick={() => setEtapaAtual(p => Math.min(4, p + 1))}
+    className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center gap-1.5 transition shadow"
+  >
+    Próxima Etapa
+    <ChevronRight className="w-4 h-4" />
+  </button>
+)}
           </div>
         </div>
       </main>
