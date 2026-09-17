@@ -1,7 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { Copy, Save, RotateCcw, Check, Sparkles, FileText, CheckCircle2 } from 'lucide-react';
-import { ProcessoFormData } from '../types';
-import { FUNDAMENTACAO_LEGAL } from '../data/normativasCamacari';
+// src/components/Step4Parecer.tsx
+import React, { useEffect, useState, useMemo } from 'react';
+import { 
+  Copy, 
+  Save, 
+  RotateCcw, 
+  Check, 
+  Sparkles, 
+  FileText, 
+  CheckCircle2, 
+  AlertTriangle,
+  FileSearch
+} from 'lucide-react';
+import { ProcessoFormData, StatusParecer } from '../types';
+import { FUNDAMENTACAO_LEGAL, DOCUMENTOS_BASE_CAMACARI, DocumentoBaseItem } from '../data/normativasCamacari';
 import { salvarProcessoNoMysql } from '../services/api';
 
 interface Step4Props {
@@ -10,13 +21,31 @@ interface Step4Props {
   onLimparFormulario: () => void;
 }
 
-export const Step4Parecer: React.FC<Step4Props> = ({ formData, setFormData, onLimparFormulario }) => {
+export const Step4Parecer: React.FC<Step4Props> = ({ 
+  formData, 
+  setFormData, 
+  onLimparFormulario 
+}) => {
   const [copiado, setCopiado] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [sucessoSalvar, setSucessoSalvar] = useState<string | null>(null);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
-  // Gerador automático do texto formal do Parecer
+  // Identifica documentos obrigatórios faltantes
+  const documentosFaltantes = useMemo(() => {
+    const aplicaveis = DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
+      if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
+        return false;
+      }
+      return doc.obrigatorio;
+    });
+
+    return aplicaveis.filter((doc: DocumentoBaseItem) => !formData.documentos_conferidos.includes(doc.id));
+  }, [formData.modalidade, formData.documentos_conferidos]);
+
+  const temPendenciaDocumental = documentosFaltantes.length > 0;
+
+  // Gerador automático do Parecer Técnico-Jurídico
   const gerarParecerAutomatico = () => {
     const dataExtenso = new Intl.DateTimeFormat('pt-BR', {
       day: 'numeric',
@@ -26,18 +55,51 @@ export const Step4Parecer: React.FC<Step4Props> = ({ formData, setFormData, onLi
 
     const cnaePrinc = formData.cnae_principal?.descricao
       ? `${formData.cnae_principal.codigo} - ${formData.cnae_principal.descricao}`
-      : 'Não informado';
+      : 'Não informado no formulário';
 
     const modalidadeTexto =
-      formData.modalidade === 'DISPENSA'
+      formData.modalidade === 'RENOVACAO_LAS'
+        ? 'RENOVAÇÃO DE LICENÇA AMBIENTAL SIMPLIFICADA (RLAS)'
+        : formData.modalidade === 'DISPENSA'
         ? 'DISPENSA DE LICENÇA AMBIENTAL (DLA)'
         : formData.modalidade === 'INEXIGIBILIDADE'
         ? 'DECLARAÇÃO DE INEXIGIBILIDADE DE LICENCIAMENTO AMBIENTAL'
         : 'LICENÇA AMBIENTAL SIMPLIFICADA (LAS)';
 
+    // Ressalva industrial quando aplicável
     const ressalvaIndustrial = formData.possui_atividade_industrial
-      ? `\nRessalta-se que, em consonância com as informações prestadas no Relatório de Caracterização do Empreendimento (RCE), a atividade que ensejou enquadramento em CNAE fabril restringe-se estritamente à montagem artesanal/sob demanda em bancada interna, sem queima de combustíveis, sem geração de efluentes líquidos industriais e sem emissões atmosféricas significativas, inexistindo atividade de transformação pesada no imóvel sob análise.`
+      ? `\nRessalta-se que, consoante declarações constantes no Relatório de Caracterização do Empreendimento (RCE), a atividade que ensejou o enquadramento em CNAE secundário fabril restringe-se à montagem artesanal/sob demanda em bancada interna, sem queima de combustíveis fósseis, sem geração de efluentes líquidos industriais e sem emissões atmosféricas poluentes significativas no galpão sob análise.`
       : '';
+
+    // Contexto específico de Renovação
+    const contextoRenovacao = formData.modalidade === 'RENOVACAO_LAS'
+      ? `\nTrata-se formalmente de pleito de RENOVAÇÃO da licença ambiental anteriormente outorgada (${formData.numeroLicencaAnterior ? `Portaria/Licença nº ${formData.numeroLicencaAnterior}` : 'conforme licença anterior acostada aos autos'}), tendo o requerente apresentado o relatório de atendimento às condicionantes técnicas pregressas e declarado a manutenção das características originais de operação, sem ampliação de porte ou alteração da linha tecnológica.`
+      : '';
+
+    // Análise documental e conclusão
+    let secaoConclusao = '';
+
+    if (formData.status_parecer === 'DILIGENCIA' || temPendenciaDocumental) {
+      const listaPendencias = documentosFaltantes.length > 0
+        ? documentosFaltantes.map((d, i) => `   ${i + 1}. ${d.nome}`).join('\n')
+        : '   1. Complementação de esclarecimentos técnicos sobre o processo operacional.';
+
+      secaoConclusao = `3. CONCLUSÃO E PROPOSIÇÃO DE DILIGÊNCIA TÉCNICA
+Da análise dos autos eletrônicos, constata-se a AUSÊNCIA de documentos e elementos indispensáveis à conclusão do mérito ambiental, restando pendente a juntada dos seguintes itens:
+${listaPendencias}
+
+Diante do exposto, esta Assessoria Técnica manifesta-se pela BAIXA DOS AUTOS EM DILIGÊNCIA, sugerindo a notificação do requerente via SIS-SEDUR para que, no prazo improrrogável de 30 (trinta) dias, promova a integral regularização da instrução documental, sob pena de indeferimento e arquivamento do feito.`;
+    } else {
+      secaoConclusao = `3. CONCLUSÃO E SALVAGUARDAS TÉCNICAS
+Isto posto, devidamente instruído o feito e atendidos os preceitos normativos vigentes, esta Assessoria Técnica - ASTEC manifesta-se favorável ao DEFERIMENTO e VALIDAÇÃO do pedido de ${modalidadeTexto}, condicionada a sua plena eficácia à observância das seguintes condicionantes e salvaguardas:
+
+a) Fica expressamente VEDADA qualquer manipulação, estocagem a granel ou fracionamento de produtos químicos perigosos ou inflamáveis não licenciados especificamente perante esta SEDUR;
+b) Proibição absoluta de implantação de lava-jato de frotas, posto interno de abastecimento ou oficina mecânica pesada no galpão sem licenciamento ambiental próprio;
+c) Manutenção em plena vigência do Alvará de Localização e Funcionamento, do Alvará Sanitário emitido pela SESAU/VISA e do Certificado de Licença do Corpo de Bombeiros Militar (AVCB/CLCB);
+d) Correto acondicionamento e destinação ambientalmente adequada de todos os resíduos sólidos gerados, mantendo em arquivo comprobatório os Manifestos de Transporte de Resíduos (MTR/SINIR) e notas fiscais de destinação final licenciada.
+
+Encaminhem-se os autos à DIRETORIA DE MEIO AMBIENTE - DIRAM para homologação final e expedição do respectivo ato autorizativo.`;
+    }
 
     const texto = `PREFEITURA MUNICIPAL DE CAMAÇARI
 SECRETARIA DO DESENVOLVIMENTO URBANO E MEIO AMBIENTE - SEDUR
@@ -56,24 +118,16 @@ Zoneamento Urbanístico: ${formData.zona_urbanistica || 'ZOUC 1'} (LC nº 1.873/
 Atividade Principal: ${cnaePrinc}
 
 1. RELATÓRIO E INSTRUÇÃO PROCESSUAL
-Trata-se de requerimento administrativo protocolado perante esta SEDUR por meio do qual o interessado acima qualificado postula a emissão de ${modalidadeTexto} para a operação das atividades econômicas no endereço sobredito.
+Trata-se de requerimento administrativo protocolado perante esta SEDUR por meio do qual o interessado acima qualificado postula a outorga de ${modalidadeTexto} para o exercício das atividades econômicas no endereço supracitado.${contextoRenovacao}
 
-Compulsando os autos, constata-se a juntada de documentação indispensável à instrução técnica, destacando-se: requerimento padrão, comprovante de CNPJ ativo, contrato social registrado perante a JUCEB, certidão negativa municipal, comprovantes de infraestrutura básica (Coelba e Embasa), documento de posse/locação, arquivo georreferenciado e Relatório de Caracterização do Empreendimento (RCE).
+Compulsando os autos, procedeu-se ao exame da instrução documental obrigatória exigida pela legislação ambiental municipal e pelos atos regulamentares da SEDUR.
 
 2. DA FUNDAMENTAÇÃO LEGAL E ENQUADRAMENTO AMBIENTAL
-A presente análise fundamenta-se nos termos da ${FUNDAMENTACAO_LEGAL.codigoMeioAmbiente}, da ${FUNDAMENTACAO_LEGAL.pddu}, da ${FUNDAMENTACAO_LEGAL.codigoUrbanistico}, bem como nas disposições gerais do ${FUNDAMENTACAO_LEGAL.decretoEstadual} e das ${FUNDAMENTACAO_LEGAL.cepram}.
+A presente manifestação técnica fundamenta-se nos termos da ${FUNDAMENTACAO_LEGAL.codigoMeioAmbiente}, da ${FUNDAMENTACAO_LEGAL.pddu}, da ${FUNDAMENTACAO_LEGAL.codigoUrbanistico}, bem como nas diretrizes gerais do ${FUNDAMENTACAO_LEGAL.decretoEstadual} e das ${FUNDAMENTACAO_LEGAL.cepram}.
 
-À luz do Anexo IV da Lei Complementar Municipal nº 1.876/2023, o porte do empreendimento aliado à tipologia do seu processo operacional classificam-se como de impacto ambiental local insignificante/não significativo para a modalidade pretendida.${ressalvaIndustrial}
+À luz do Anexo IV e do Art. 14 da Lei Complementar Municipal nº 1.876/2023, o porte do empreendimento aliado à tipologia do seu processo operacional e a ausência de passivos ambientais conhecidos respaldam o enquadramento no rito administrativo de ${modalidadeTexto}.${ressalvaIndustrial}
 
-3. CONCLUSÃO E SALVAGUARDAS TÉCNICAS
-Isto posto, esta ASTEC manifesta-se pelo DEFERIMENTO e VALIDAÇÃO do pedido de ${modalidadeTexto}, condicionada a sua eficácia ao estrito cumprimento das seguintes salvaguardas e condicionantes:
-
-a) Fica expressamente VEDADA qualquer manipulação, estocagem a granel ou fracionamento de produtos químicos perigosos ou inflamáveis não autorizados previamente pelo órgão ambiental;
-b) Proibição absoluta de implantação de lava-jato, ponto de abastecimento de combustíveis ou oficina mecânica no galpão sem o devido e prévio licenciamento ordinário;
-c) Manutenção em vigor do Alvará de Localização e Funcionamento, do Alvará Sanitário emitido pela SESAU/VISA e da Licença do Corpo de Bombeiros Militar (AVCB/CLCB);
-d) Correto acondicionamento e destinação ambientalmente adequada dos resíduos sólidos recicláveis e comuns gerados, consoante as diretrizes do Plano Municipal de Gestão Integrada de Resíduos Sólidos de Camaçari.
-
-Encaminhem-se os autos à DIRAM para homologação final e lavratura do respectivo documento autorizativo.
+${secaoConclusao}
 
 Camaçari - BA, ${dataExtenso}.
 
@@ -84,6 +138,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
     setFormData(prev => ({ ...prev, texto_parecer: texto }));
   };
 
+  // Atualiza parecer quando a tela abre ou status muda
   useEffect(() => {
     if (!formData.texto_parecer) {
       gerarParecerAutomatico();
@@ -100,24 +155,30 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
     }
   };
 
-  const handleSalvarNoMysql = async () => {
+  const handleSalvar = async () => {
     setSalvando(true);
     setSucessoSalvar(null);
     setErroSalvar(null);
 
     try {
       const res = await salvarProcessoNoMysql(formData);
-      setSucessoSalvar(`${res.message} (Registro nº ${res.id})`);
+      setSucessoSalvar(`${res.message} (Registro #${res.id})`);
       setFormData(prev => ({ ...prev, id: res.id }));
     } catch (err: any) {
-      setErroSalvar(err.message || 'Falha ao salvar no banco MySQL da HostGator.');
+      setErroSalvar(err.message || 'Falha ao salvar dados.');
     } finally {
       setSalvando(false);
     }
   };
 
+  const handleMudarStatus = (novoStatus: StatusParecer) => {
+    setFormData(prev => ({ ...prev, status_parecer: novoStatus }));
+    setTimeout(() => gerarParecerAutomatico(), 50);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Cabeçalho */}
       <div className="border-b border-slate-200 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -125,7 +186,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
             Etapa 4: Parecer Técnico-Jurídico da ASTEC
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Minuta formal padronizada direcionada à DIRAM com enquadramento normativo completo de Camaçari.
+            Minuta formal padronizada direcionada à DIRAM, fundamentada nas leis municipais de Camaçari.
           </p>
         </div>
 
@@ -135,10 +196,60 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
           className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition self-start md:self-center"
         >
           <Sparkles className="w-4 h-4 text-amber-600" />
-          Regenerar Parecer com Dados Atuais
+          Regenerar Minuta com Dados Atuais
         </button>
       </div>
 
+      {/* Alerta de Documentação Faltante / Recomendação de Conclusão */}
+      {temPendenciaDocumental ? (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-sm font-bold text-amber-900">
+              Atenção: Há {documentosFaltantes.length} documento(s) obrigatório(s) não conferido(s)
+            </h3>
+            <p className="text-xs text-amber-800 mt-1">
+              Para processos incompletos, a recomendação técnica é a <strong>Baixa em Diligência</strong> para notificação do requerente no SIS-SEDUR.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleMudarStatus('DILIGENCIA')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
+                  formData.status_parecer === 'DILIGENCIA'
+                    ? 'bg-amber-600 text-white border-amber-700'
+                    : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-100'
+                }`}
+              >
+                Concluir por Diligência
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMudarStatus('DEFERIMENTO')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
+                  formData.status_parecer === 'DEFERIMENTO'
+                    ? 'bg-emerald-600 text-white border-emerald-700'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                Manter Deferimento
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-semibold">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            Todos os documentos obrigatórios foram conferidos. Processo apto para Deferimento.
+          </span>
+          <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded text-[11px]">
+            Instrução 100%
+          </span>
+        </div>
+      )}
+
+      {/* Mensagens de Sucesso ou Erro ao Salvar */}
       {sucessoSalvar && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-lg flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -152,23 +263,27 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
         </div>
       )}
 
-      {/* Textarea Editável */}
+      {/* Editor de Texto do Parecer */}
       <div>
-        <label className="block text-sm font-semibold text-slate-700 mb-1">
-          Texto do Parecer Técnico (Editável pelo Analista):
-        </label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+            <FileSearch className="w-4 h-4 text-slate-500" />
+            Texto do Parecer Técnico (Editável pelo Analista):
+          </label>
+          <span className="text-xs text-slate-400">Padrão Oficial ASTEC / DIRAM</span>
+        </div>
         <textarea
-          rows={16}
+          rows={17}
           value={formData.texto_parecer}
           onChange={e => setFormData(p => ({ ...p, texto_parecer: e.target.value }))}
           className="w-full p-4 border border-slate-300 rounded-xl font-mono text-xs leading-relaxed text-slate-900 bg-white focus:ring-2 focus:ring-slate-600 focus:border-slate-600 shadow-inner"
         />
-        <span className="text-xs text-slate-400">
-          Você pode revisar e alterar livremente a redação acima antes de salvar ou copiar para o sistema.
+        <span className="text-xs text-slate-400 block mt-1">
+          Você pode revisar e ajustar a redação livremente antes de copiar para o SIS-SEDUR ou salvar.
         </span>
       </div>
 
-      {/* Botões de Ação */}
+      {/* Barra de Ações */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <button
           type="button"
@@ -191,12 +306,12 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
 
           <button
             type="button"
-            onClick={handleSalvarNoMysql}
+            onClick={handleSalvar}
             disabled={salvando}
             className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center gap-2 shadow-sm transition disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            {salvando ? 'Gravando...' : 'Salvar no MySQL da HostGator'}
+            {salvando ? 'Gravando...' : 'Salvar no Banco'}
           </button>
         </div>
       </div>
