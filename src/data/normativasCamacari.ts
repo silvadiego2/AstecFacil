@@ -14,7 +14,7 @@ export interface DocumentoBaseItem {
 
 export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
   { valor: 'ZOUC 1', label: 'ZOUC 1 - Zona de Ocupação Urbana Consolidada 1 (Sede)' },
-  { valor: 'ZOUC 2', label: 'ZOUC 2 - Zona de Ocupação Urbana Consolidada 2 (Orla e Vetor Expansão)' },
+  { valor: 'ZOUC 2', label: 'ZOUC 2 - Zona de Ocupação Urbana Consolidada 2 (Orla e Expansão)' },
   { valor: 'ZDC 1', label: 'ZDC 1 - Zona de Desenvolvimento e Comércio 1' },
   { valor: 'ZDC 2', label: 'ZDC 2 - Zona de Desenvolvimento e Comércio 2' },
   { valor: 'ZDC 3', label: 'ZDC 3 - Zona de Desenvolvimento e Comércio 3 (Corredores Rodoviários)' },
@@ -154,7 +154,7 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
     return 'ZPIC';
   }
 
-  // Litoral e Orla Marítima Turística / Residencial
+  // Litoral e Orla Turística / Residencial
   if (
     b.includes('guarajuba') ||
     b.includes('itacimirim') ||
@@ -196,12 +196,11 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
   }
 
   // Bairros da Sede Urbana Consolidada (Padrão ZOUC 1)
-  // (Centro, Ponto Certo, Gleba A/B/C/E, Natal, Piaçaveira, Inocoop, Alto da Cruz, etc.)
   return 'ZOUC 1';
 }
 
 // ============================================================================
-// 2. PARSER INTELIGENTE DE TEXTO DO SIS-SEDUR (METADADOS + DOCUMENTOS)
+// 2. PARSER RESILIENTE DO SIS-SEDUR COM DETECÇÃO AVANÇADA DE CNPJ
 // ============================================================================
 export interface ResultadoParsingSisSedur {
   numero_processo?: string;
@@ -231,11 +230,37 @@ export function parseTextoDoSisSedur(texto: string): ResultadoParsingSisSedur {
     resultado.numero_processo = matchProcesso[0].replace(/\//g, '.');
   }
 
-  // 2. Extração do CNPJ
-  const regexCnpj = /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/;
-  const matchCnpj = textoLimpo.match(regexCnpj);
-  if (matchCnpj) {
-    resultado.cnpj = matchCnpj[0];
+  // 2. Extração ULTRA-RESILIENTE de CNPJ (Formatado, com Rótulo ou Números Soltos)
+  let cnpjEncontrado: string | null = null;
+
+  // 2a. Busca por CNPJ formatado tradicional (XX.XXX.XXX/XXXX-XX)
+  const matchFormatado = textoLimpo.match(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/);
+  if (matchFormatado) {
+    cnpjEncontrado = matchFormatado[0];
+  }
+
+  // 2b. Busca por rótulo (CNPJ, CPF/CNPJ, Inscrição Federal)
+  if (!cnpjEncontrado) {
+    const matchRotulo = textoLimpo.match(/(?:cnpj|cpf\/cnpj|cnpj\/cpf|inscri[cç][aã]o\s+federal|doc(?:\.|umento)?)\s*[:=-]?\s*([0-9.\-\/\s]{11,20})/i);
+    if (matchRotulo) {
+      const digitos = matchRotulo[1].replace(/\D/g, '');
+      if (digitos.length === 14) {
+        cnpjEncontrado = `${digitos.slice(0, 2)}.${digitos.slice(2, 5)}.${digitos.slice(5, 8)}/${digitos.slice(8, 12)}-${digitos.slice(12, 14)}`;
+      }
+    }
+  }
+
+  // 2c. Busca por qualquer sequência contínua de 14 dígitos no texto
+  if (!cnpjEncontrado) {
+    const match14 = textoLimpo.match(/\b\d{14}\b/);
+    if (match14) {
+      const d = match14[0];
+      cnpjEncontrado = `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12, 14)}`;
+    }
+  }
+
+  if (cnpjEncontrado) {
+    resultado.cnpj = cnpjEncontrado;
   }
 
   // 3. Extração da Razão Social / Interessado
@@ -285,55 +310,22 @@ export function parseTextoDoSisSedur(texto: string): ResultadoParsingSisSedur {
 
   const docsEncontrados = new Set<number>();
 
-  // Doc 1: Requerimento Padrão
   if (/requerimento|solicitacao|formulario padrao/.test(normalizado)) docsEncontrados.add(1);
-
-  // Doc 2: Cartão CNPJ
   if (/cartao cnpj|cartao do cnpj|comprovante cnpj|situacao cadastral/.test(normalizado)) docsEncontrados.add(2);
-
-  // Doc 3: Contrato Social
   if (/contrato social|alteracao contratual|estatuto|juceb/.test(normalizado)) docsEncontrados.add(3);
-
-  // Doc 4: Documento dos Sócios
   if (/\brg\b|\bcpf\b|\bcnh\b|identificacao|identidade dos socios/.test(normalizado)) docsEncontrados.add(4);
-
-  // Doc 5: Contrato de Locação ou Escritura
   if (/locacao|locaçao|aluguel|escritura|registro de imoveis|certidao de inteiro teor|\brgi\b|matricula/.test(normalizado)) docsEncontrados.add(5);
-
-  // Doc 6: CND IPTU / Débitos Municipais
   if (/iptu|certidao negativa|debitos municipais|tributos municipais|\bsefaz\b/.test(normalizado)) docsEncontrados.add(6);
-
-  // Doc 7: Viabilidade Urbanística ou Alvará
   if (/viabilidade|consulta previa|uso do solo|alvara de localizacao|alvara de funcionamento/.test(normalizado)) docsEncontrados.add(7);
-
-  // Doc 8: RCE (Relatório de Caracterização)
   if (/\brce\b|caracterizacao do empreendimento|relatorio de caracterizacao/.test(normalizado)) docsEncontrados.add(8);
-
-  // Doc 9: KML/KMZ e Croqui
   if (/\bkml\b|\bkmz\b|croqui|georreferenciamento|sirgas 2000/.test(normalizado)) docsEncontrados.add(9);
-
-  // Doc 10: Bombeiros (AVCB / CLCB)
   if (/bombeiro|bombeiros|\bavcb\b|\bclcb\b|cbmba/.test(normalizado)) docsEncontrados.add(10);
-
-  // Doc 11: DAMs e Taxas
   if (/\bdam\b|taxa de abertura|taxa de licenciamento|comprovante de pagamento|quitacao bancaria/.test(normalizado)) docsEncontrados.add(11);
-
-  // Doc 12: EMBASA / Água / Fossa
   if (/embasa|abastecimento de agua|esgotamento|fossa septica/.test(normalizado)) docsEncontrados.add(12);
-
-  // Doc 13: Coelba / Energia
   if (/coelba|neoenergia|energia eletrica|conta de luz/.test(normalizado)) docsEncontrados.add(13);
-
-  // Doc 14: Vigilância Sanitária (VISA)
   if (/sanitario|sanitaria|vigilancia|sesau|\bvisa\b/.test(normalizado)) docsEncontrados.add(14);
-
-  // Doc 15: Vistoria / Fiscalização DIRAM
   if (/vistoria|relatorio de vistoria|fiscalizacao|\bdiram\b|\bcla\b/.test(normalizado)) docsEncontrados.add(15);
-
-  // Doc 16: Licença Anterior (Renovação)
   if (/licenca anterior|licenca a renovar|las anterior|portaria sedur|portaria anterior/.test(normalizado)) docsEncontrados.add(16);
-
-  // Doc 17: Cumprimento de Condicionantes (Renovação)
   if (/condicionantes|cumprimento das condicionantes|\bmtr\b|\bsinir\b/.test(normalizado)) docsEncontrados.add(17);
 
   resultado.documentos_identificados = Array.from(docsEncontrados);
