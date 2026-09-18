@@ -1,7 +1,23 @@
+// src/components/Step1Identificacao.tsx
 import React, { useState } from 'react';
-import { Search, Loader2, Building2, MapPin, AlertCircle, RefreshCw } from 'lucide-react';
+import { 
+  Search, 
+  Loader2, 
+  Building2, 
+  MapPin, 
+  AlertCircle, 
+  RefreshCw, 
+  ClipboardPaste, 
+  Check, 
+  Sparkles, 
+  X 
+} from 'lucide-react';
 import { ProcessoFormData } from '../types';
-import { ZONEAMENTOS_CAMACARI } from '../data/normativasCamacari';
+import { 
+  ZONEAMENTOS_CAMACARI, 
+  inferirZoneamentoPorBairro, 
+  parseTextoDoSisSedur 
+} from '../data/normativasCamacari';
 import { consultarCnpjBrasilApi } from '../services/api';
 
 interface Step1Props {
@@ -13,6 +29,11 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [erroCnpj, setErroCnpj] = useState<string | null>(null);
 
+  // Modal de Captura Rápida do SIS-SEDUR
+  const [modalImportar, setModalImportar] = useState(false);
+  const [textoCopiadoSisSedur, setTextoCopiadoSisSedur] = useState('');
+  const [feedbackImportacao, setFeedbackImportacao] = useState<string | null>(null);
+
   const handleProcessoChange = (val: string) => {
     let clean = val.replace(/\D/g, '').slice(0, 17);
     let masked = clean;
@@ -22,6 +43,16 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     if (clean.length > 12) masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7, 9)}.${clean.slice(9, 12)}.${clean.slice(12, 16)}`;
 
     setFormData(prev => ({ ...prev, numero_processo: masked }));
+  };
+
+  // Autocompleta o zoneamento sempre que o Bairro é preenchido ou alterado
+  const handleBairroChange = (novoBairro: string) => {
+    const zonaSugerida = inferirZoneamentoPorBairro(novoBairro);
+    setFormData(prev => ({
+      ...prev,
+      bairro: novoBairro,
+      zona_urbanistica: zonaSugerida,
+    }));
   };
 
   const handleConsultarCnpj = async () => {
@@ -43,12 +74,16 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         data.complemento
       ].filter(Boolean).join(' ');
 
+      const bairroRetornado = data.bairro || '';
+      const zonaSugerida = inferirZoneamentoPorBairro(bairroRetornado);
+
       setFormData(prev => ({
         ...prev,
         interessado: data.razao_social || data.nome_fantasia || prev.interessado,
         endereco: logradouroCompleto || prev.endereco,
-        bairro: data.bairro || prev.bairro,
+        bairro: bairroRetornado || prev.bairro,
         cep: data.cep || prev.cep,
+        zona_urbanistica: zonaSugerida,
         cnae_principal: {
           codigo: data.cnae_fiscal,
           descricao: data.cnae_fiscal_descricao,
@@ -65,16 +100,68 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     }
   };
 
+  // Executa o Parsing do texto colado do SIS-SEDUR
+  const handleProcessarTextoColado = () => {
+    if (!textoCopiadoSisSedur.trim()) return;
+
+    const parsed = parseTextoDoSisSedur(textoCopiadoSisSedur);
+
+    setFormData(prev => {
+      // Une documentos já marcados com os novos detectados pelo parser
+      const docsUnificados = Array.from(
+        new Set([...prev.documentos_conferidos, ...parsed.documentos_identificados])
+      );
+
+      const novoBairro = parsed.bairro || prev.bairro;
+      const novaZona = parsed.zona_sugerida || (novoBairro ? inferirZoneamentoPorBairro(novoBairro) : prev.zona_urbanistica);
+
+      return {
+        ...prev,
+        numero_processo: parsed.numero_processo || prev.numero_processo,
+        cnpj: parsed.cnpj || prev.cnpj,
+        interessado: parsed.interessado || prev.interessado,
+        endereco: parsed.endereco || prev.endereco,
+        bairro: novoBairro,
+        area_m2: parsed.area_m2 || prev.area_m2,
+        coordenadas: parsed.coordenadas || prev.coordenadas,
+        zona_urbanistica: novaZona,
+        documentos_conferidos: docsUnificados,
+      };
+    });
+
+    setFeedbackImportacao(
+      `Sucesso! Identificados: ${parsed.documentos_identificados.length} documento(s) anexado(s) marcados no checklist.`
+    );
+
+    setTimeout(() => {
+      setModalImportar(false);
+      setTextoCopiadoSisSedur('');
+      setFeedbackImportacao(null);
+    }, 1500);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-200 pb-4">
-        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-          <Building2 className="w-6 h-6 text-slate-700" />
-          Etapa 1: Identificação do Processo e Tipo de Requerimento
-        </h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Informe o protocolo do SIS-SEDUR, o tipo de solicitação e faça a busca cadastral do CNPJ.
-        </p>
+      {/* Topo com Botão de Importação Rápida */}
+      <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Building2 className="w-6 h-6 text-slate-700" />
+            Etapa 1: Identificação do Processo e Localização
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Preencha os dados do processo ou importe direto da tela do SIS-SEDUR.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setModalImportar(true)}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition self-start sm:self-center"
+        >
+          <ClipboardPaste className="w-4 h-4" />
+          Colar do SIS-SEDUR (Auto-Preencher)
+        </button>
       </div>
 
       {erroCnpj && (
@@ -124,7 +211,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
               <RefreshCw className="w-4 h-4 text-emerald-600" />
               <div>
                 <div className="text-sm">Renovação de Licença Ambiental Simplificada (RLAS)</div>
-                <div className="text-xs text-slate-500">Empreendimento já licenciado anteriormente na SEDUR</div>
+                <div className="text-xs text-slate-500">Empreendimento com licença anterior vigente</div>
               </div>
             </div>
           </label>
@@ -139,7 +226,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
               type="text"
               value={formData.numeroLicencaAnterior || ''}
               onChange={e => setFormData(p => ({ ...p, numeroLicencaAnterior: e.target.value }))}
-              placeholder="Ex: Portaria SEDUR nº 084/2023 ou LAS nº 2023-0145"
+              placeholder="Ex: Portaria SEDUR nº 138/2023 ou LAS nº 2023-0145"
               className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white"
             />
           </div>
@@ -214,16 +301,19 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
           />
         </div>
 
-        {/* Bairro */}
+        {/* Bairro com Autocompletar de Zoneamento */}
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1">
-            Bairro / Distrito de Camaçari
+          <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <span>Bairro / Distrito de Camaçari</span>
+            <span className="text-[11px] text-emerald-600 font-normal flex items-center gap-1">
+              <Sparkles className="w-3 h-3" /> Auto-seleciona a zona do PDDU
+            </span>
           </label>
           <input
             type="text"
             value={formData.bairro}
-            onChange={e => setFormData(p => ({ ...p, bairro: e.target.value }))}
-            placeholder="Ex: Ponto Certo, Polo Petroquímico, Catu de Abrantes, Guarajuba"
+            onChange={e => handleBairroChange(e.target.value)}
+            placeholder="Ex: Polo Petroquímico, Ponto Certo, Catu de Abrantes, Guarajuba"
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
           />
         </div>
@@ -258,15 +348,18 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
           />
         </div>
 
-        {/* Zoneamento */}
+        {/* Zoneamento com Indicador de Auto-Preenchimento */}
         <div className="md:col-span-2">
-          <label className="block text-sm font-semibold text-slate-700 mb-1">
-            Macrozoneamento Urbanístico (PDDU - LC nº 1.873/2023)
+          <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <span>Macrozoneamento Urbanístico (PDDU - LC nº 1.873/2023)</span>
+            <span className="text-xs text-slate-500 font-mono">
+              Zona Atual: <strong>{formData.zona_urbanistica}</strong>
+            </span>
           </label>
           <select
             value={formData.zona_urbanistica}
             onChange={e => setFormData(p => ({ ...p, zona_urbanistica: e.target.value }))}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-slate-600"
           >
             {ZONEAMENTOS_CAMACARI.map(z => (
               <option key={z.valor} value={z.valor}>
@@ -276,6 +369,68 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
           </select>
         </div>
       </div>
+
+      {/* MODAL DE IMPORTAÇÃO POR COLAGEM DO SIS-SEDUR */}
+      {modalImportar && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                <ClipboardPaste className="w-5 h-5 text-emerald-600" />
+                Importar Dados e Documentos do SIS-SEDUR
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalImportar(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Na tela do processo no SIS-SEDUR (aba de dados e lista de documentos anexados), selecione o texto ou a tabela com <kbd className="bg-slate-200 px-1.5 py-0.5 rounded text-[10px]">Ctrl+A</kbd> e <kbd className="bg-slate-200 px-1.5 py-0.5 rounded text-[10px]">Ctrl+C</kbd>, e cole no campo abaixo. O sistema lerá os títulos dos documentos e marcará o checklist automaticamente.
+              </p>
+
+              <textarea
+                rows={9}
+                placeholder="Exemplo de conteúdo colado:&#10;Processo: 01452.22.09.001.2026&#10;Interessado: BAHIA LOGISTICA LTDA&#10;CNPJ: 12.345.678/0001-90&#10;Bairro: Polo Petroquimico&#10;Área: 1250,00 m2&#10;Documentos anexados:&#10;- Requerimento_Padrao.pdf&#10;- Cartao_CNPJ.pdf&#10;- Contrato_Social.pdf&#10;- Contrato_Locacao.pdf&#10;- AVCB_Bombeiros.pdf&#10;- RCE_Assinado.pdf"
+                value={textoCopiadoSisSedur}
+                onChange={e => setTextoCopiadoSisSedur(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 bg-white focus:ring-2 focus:ring-emerald-600"
+              />
+
+              {feedbackImportacao && (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  {feedbackImportacao}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalImportar(false)}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg transition"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleProcessarTextoColado}
+                disabled={!textoCopiadoSisSedur.trim()}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition disabled:opacity-40"
+              >
+                <Sparkles className="w-4 h-4" />
+                Processar e Preencher ASTEC Fácil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
