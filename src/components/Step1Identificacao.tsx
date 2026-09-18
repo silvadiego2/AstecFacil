@@ -29,9 +29,10 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [erroCnpj, setErroCnpj] = useState<string | null>(null);
 
-  // Modal de Captura Rápida do SIS-SEDUR
+  // Modal de Captura do SIS-SEDUR
   const [modalImportar, setModalImportar] = useState(false);
   const [textoCopiadoSisSedur, setTextoCopiadoSisSedur] = useState('');
+  const [processandoImportacao, setProcessandoImportacao] = useState(false);
   const [feedbackImportacao, setFeedbackImportacao] = useState<string | null>(null);
 
   const handleProcessoChange = (val: string) => {
@@ -45,7 +46,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     setFormData(prev => ({ ...prev, numero_processo: masked }));
   };
 
-  // Autocompleta o zoneamento sempre que o Bairro é preenchido ou alterado
+  // Autocompleta o zoneamento ao digitar ou alterar o Bairro
   const handleBairroChange = (novoBairro: string) => {
     const zonaSugerida = inferirZoneamentoPorBairro(novoBairro);
     setFormData(prev => ({
@@ -55,6 +56,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     }));
   };
 
+  // Consulta manual à BrasilAPI
   const handleConsultarCnpj = async () => {
     const rawCnpj = formData.cnpj.replace(/\D/g, '');
     if (rawCnpj.length !== 14) {
@@ -100,49 +102,112 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     }
   };
 
-  // Executa o Parsing do texto colado do SIS-SEDUR
-  const handleProcessarTextoColado = () => {
+  // PARSER DO SIS-SEDUR + CONSULTA AUTOMÁTICA À BRASILAPI
+  const handleProcessarTextoColado = async () => {
     if (!textoCopiadoSisSedur.trim()) return;
 
-    const parsed = parseTextoDoSisSedur(textoCopiadoSisSedur);
+    setProcessandoImportacao(true);
+    setFeedbackImportacao('Lendo dados do SIS-SEDUR e consultando CNPJ na Receita Federal...');
 
-    setFormData(prev => {
-      // Une documentos já marcados com os novos detectados pelo parser
-      const docsUnificados = Array.from(
-        new Set([...prev.documentos_conferidos, ...parsed.documentos_identificados])
-      );
+    try {
+      const parsed = parseTextoDoSisSedur(textoCopiadoSisSedur);
+      let dadosBrasilApi: any = null;
 
-      const novoBairro = parsed.bairro || prev.bairro;
-      const novaZona = parsed.zona_sugerida || (novoBairro ? inferirZoneamentoPorBairro(novoBairro) : prev.zona_urbanistica);
+      // Se detectou CNPJ, consulta automaticamente na BrasilAPI
+      if (parsed.cnpj) {
+        const cnpjLimpo = parsed.cnpj.replace(/\D/g, '');
+        if (cnpjLimpo.length === 14) {
+          try {
+            dadosBrasilApi = await consultarCnpjBrasilApi(cnpjLimpo);
+          } catch (apiErr) {
+            console.warn('BrasilAPI não respondeu para o CNPJ extraído:', apiErr);
+          }
+        }
+      }
 
-      return {
-        ...prev,
-        numero_processo: parsed.numero_processo || prev.numero_processo,
-        cnpj: parsed.cnpj || prev.cnpj,
-        interessado: parsed.interessado || prev.interessado,
-        endereco: parsed.endereco || prev.endereco,
-        bairro: novoBairro,
-        area_m2: parsed.area_m2 || prev.area_m2,
-        coordenadas: parsed.coordenadas || prev.coordenadas,
-        zona_urbanistica: novaZona,
-        documentos_conferidos: docsUnificados,
-      };
-    });
+      setFormData(prev => {
+        // Une documentos encontrados com os que já estavam marcados
+        const docsUnificados = Array.from(
+          new Set([...prev.documentos_conferidos, ...parsed.documentos_identificados])
+        );
 
-    setFeedbackImportacao(
-      `Sucesso! Identificados: ${parsed.documentos_identificados.length} documento(s) anexado(s) marcados no checklist.`
-    );
+        let interessadoFinal = parsed.interessado || prev.interessado;
+        let enderecoFinal = parsed.endereco || prev.endereco;
+        let bairroFinal = parsed.bairro || prev.bairro;
+        let cepFinal = prev.cep;
+        let cnaePrinc = prev.cnae_principal;
+        let cnaesSec = prev.cnaes_secundarios;
 
-    setTimeout(() => {
-      setModalImportar(false);
-      setTextoCopiadoSisSedur('');
-      setFeedbackImportacao(null);
-    }, 1500);
+        // Se a BrasilAPI retornou dados, prioriza dados oficiais da Receita
+        if (dadosBrasilApi) {
+          interessadoFinal = dadosBrasilApi.razao_social || dadosBrasilApi.nome_fantasia || interessadoFinal;
+          bairroFinal = dadosBrasilApi.bairro || bairroFinal;
+          cepFinal = dadosBrasilApi.cep || cepFinal;
+
+          const endApi = [
+            dadosBrasilApi.descricao_tipo_de_logradouro,
+            dadosBrasilApi.logradouro,
+            dadosBrasilApi.numero ? `nº ${dadosBrasilApi.numero}` : '',
+            dadosBrasilApi.complemento
+          ].filter(Boolean).join(' ');
+
+          if (endApi) enderecoFinal = endApi;
+
+          cnaePrinc = {
+            codigo: dadosBrasilApi.cnae_fiscal,
+            descricao: dadosBrasilApi.cnae_fiscal_descricao,
+          };
+
+          cnaesSec = (dadosBrasilApi.cnaes_secundarios || []).map((c: any) => ({
+            codigo: c.codigo,
+            descricao: c.descricao,
+          }));
+        }
+
+        const zonaFinal = inferirZoneamentoPorBairro(bairroFinal);
+
+        return {
+          ...prev,
+          numero_processo: parsed.numero_processo || prev.numero_processo,
+          cnpj: parsed.cnpj || prev.cnpj,
+          interessado: interessadoFinal,
+          endereco: enderecoFinal,
+          bairro: bairroFinal,
+          cep: cepFinal,
+          area_m2: parsed.area_m2 || prev.area_m2,
+          coordenadas: parsed.coordenadas || prev.coordenadas,
+          zona_urbanistica: zonaFinal,
+          cnae_principal: cnaePrinc,
+          cnaes_secundarios: cnaesSec,
+          documentos_conferidos: docsUnificados,
+        };
+      });
+
+      const detalhes = [];
+      if (parsed.cnpj) detalhes.push(`CNPJ: ${parsed.cnpj}`);
+      if (dadosBrasilApi) detalhes.push(`Razão Social: ${dadosBrasilApi.razao_social}`);
+      if (parsed.documentos_identificados.length > 0) {
+        detalhes.push(`${parsed.documentos_identificados.length} documento(s) marcados`);
+      }
+
+      setFeedbackImportacao(`Sucesso! ${detalhes.join(' | ')}`);
+
+      setTimeout(() => {
+        setModalImportar(false);
+        setTextoCopiadoSisSedur('');
+        setFeedbackImportacao(null);
+      }, 2000);
+
+    } catch (err: any) {
+      setFeedbackImportacao(`Aviso: ${err.message || 'Erro ao processar'}`);
+    } finally {
+      setProcessandoImportacao(false);
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Topo com Botão de Importação Rápida */}
+      {/* Cabeçalho com o Botão de Importação */}
       <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -150,7 +215,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             Etapa 1: Identificação do Processo e Localização
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Preencha os dados do processo ou importe direto da tela do SIS-SEDUR.
+            Preencha os dados cadastrais ou utilize a colagem rápida do SIS-SEDUR.
           </p>
         </div>
 
@@ -171,7 +236,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         </div>
       )}
 
-      {/* Seletor de Tipo de Solicitação */}
+      {/* Natureza da Demanda Administrativa */}
       <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
         <label className="block text-sm font-bold text-slate-800 mb-2">
           Natureza da Demanda Administrativa:
@@ -233,6 +298,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         )}
       </div>
 
+      {/* Grade de Campos Cadastrais */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Número do Processo */}
         <div>
@@ -306,7 +372,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
           <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center justify-between">
             <span>Bairro / Distrito de Camaçari</span>
             <span className="text-[11px] text-emerald-600 font-normal flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Auto-seleciona a zona do PDDU
+              <Sparkles className="w-3 h-3" /> Auto-seleciona zona do PDDU
             </span>
           </label>
           <input
@@ -348,7 +414,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
           />
         </div>
 
-        {/* Zoneamento com Indicador de Auto-Preenchimento */}
+        {/* Zoneamento */}
         <div className="md:col-span-2">
           <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center justify-between">
             <span>Macrozoneamento Urbanístico (PDDU - LC nº 1.873/2023)</span>
@@ -370,7 +436,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         </div>
       </div>
 
-      {/* MODAL DE IMPORTAÇÃO POR COLAGEM DO SIS-SEDUR */}
+      {/* MODAL DE IMPORTAÇÃO RÁPIDA DO SIS-SEDUR */}
       {modalImportar && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
@@ -384,18 +450,18 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
                 onClick={() => setModalImportar(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
 
             <div className="p-5 space-y-4">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Na tela do processo no SIS-SEDUR (aba de dados e lista de documentos anexados), selecione o texto ou a tabela com <kbd className="bg-slate-200 px-1.5 py-0.5 rounded text-[10px]">Ctrl+A</kbd> e <kbd className="bg-slate-200 px-1.5 py-0.5 rounded text-[10px]">Ctrl+C</kbd>, e cole no campo abaixo. O sistema lerá os títulos dos documentos e marcará o checklist automaticamente.
+                Copie o texto da tela do processo ou da tabela de documentos anexados no SIS-SEDUR e cole no campo abaixo. O sistema extrairá o processo, o CNPJ (consultando automaticamente a Receita Federal), a área e marcará os documentos no checklist.
               </p>
 
               <textarea
                 rows={9}
-                placeholder="Exemplo de conteúdo colado:&#10;Processo: 01452.22.09.001.2026&#10;Interessado: BAHIA LOGISTICA LTDA&#10;CNPJ: 12.345.678/0001-90&#10;Bairro: Polo Petroquimico&#10;Área: 1250,00 m2&#10;Documentos anexados:&#10;- Requerimento_Padrao.pdf&#10;- Cartao_CNPJ.pdf&#10;- Contrato_Social.pdf&#10;- Contrato_Locacao.pdf&#10;- AVCB_Bombeiros.pdf&#10;- RCE_Assinado.pdf"
+                placeholder="Cole aqui o conteúdo copiado do SIS-SEDUR (com ou sem cabeçalho)...&#10;&#10;Exemplo:&#10;Processo: 01452.22.09.001.2026&#10;CNPJ: 12.345.678/0001-90 (ou 12345678000190)&#10;Requerente: BAHIA LOGISTICA LTDA&#10;Bairro: Polo Petroquimico&#10;Área Construída: 1250 m2&#10;Arquivos anexados:&#10;- Requerimento_Padrao.pdf&#10;- Cartao_CNPJ.pdf&#10;- Contrato_Social.pdf&#10;- Contrato_Locacao.pdf&#10;- AVCB_Bombeiros.pdf"
                 value={textoCopiadoSisSedur}
                 onChange={e => setTextoCopiadoSisSedur(e.target.value)}
                 className="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 bg-white focus:ring-2 focus:ring-emerald-600"
@@ -403,7 +469,11 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
 
               {feedbackImportacao && (
                 <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg text-xs font-semibold flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-600" />
+                  {processandoImportacao ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  ) : (
+                    <Check className="w-4 h-4 text-emerald-600" />
+                  )}
                   {feedbackImportacao}
                 </div>
               )}
@@ -421,11 +491,20 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
               <button
                 type="button"
                 onClick={handleProcessarTextoColado}
-                disabled={!textoCopiadoSisSedur.trim()}
+                disabled={!textoCopiadoSisSedur.trim() || processandoImportacao}
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition disabled:opacity-40"
               >
-                <Sparkles className="w-4 h-4" />
-                Processar e Preencher ASTEC Fácil
+                {processandoImportacao ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Consultando Receita e Processando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Processar e Consultar CNPJ
+                  </>
+                )}
               </button>
             </div>
           </div>
