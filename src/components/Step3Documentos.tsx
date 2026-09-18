@@ -1,6 +1,6 @@
 // src/components/Step3Documentos.tsx
 import React, { useMemo } from 'react';
-import { FileCheck, CheckSquare, Square, CheckCheck, RotateCcw } from 'lucide-react';
+import { FileCheck, CheckSquare, Square, CheckCheck, RotateCcw, Sparkles } from 'lucide-react';
 import { ProcessoFormData } from '../types';
 import { DOCUMENTOS_BASE_CAMACARI, DocumentoBaseItem } from '../data/normativasCamacari';
 
@@ -10,7 +10,7 @@ interface Step3Props {
 }
 
 export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData }) => {
-  // Filtra os documentos aplicáveis (exibe os itens 16 e 17 somente em Renovação de LAS)
+  // Filtra documentos aplicáveis (exibe itens 16 e 17 somente em Renovação de LAS)
   const docsAplicaveis = useMemo(() => {
     return DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
       if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
@@ -40,7 +40,6 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
     });
   };
 
-  // Marca com 1 clique todos os itens obrigatórios aplicáveis
   const marcarKitPadrao = () => {
     const idsPadrao = docsObrigatorios.map((d: DocumentoBaseItem) => d.id);
     setFormData(prev => ({
@@ -68,15 +67,20 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
           Etapa 3: Checklist de Conferência Documental (SEDUR)
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Marque os documentos que foram efetivamente juntados aos autos do SIS-SEDUR. Apenas os itens marcados como obrigatórios travam a instrução.
+          Documentos conferidos nos autos do SIS-SEDUR. Os títulos identificados na Etapa 1 já vêm pré-marcados.
         </p>
       </div>
 
       {/* Card da Barra de Progresso */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <span className="text-sm font-bold text-slate-800">
+          <span className="text-sm font-bold text-slate-800 flex items-center gap-2">
             Instrução Processual: {percentualConcluido}% ({formData.documentos_conferidos.length} de {docsAplicaveis.length} conferidos)
+            {formData.documentos_conferidos.length > 0 && (
+              <span className="text-[11px] font-normal text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Detectados pelo SIS-SEDUR
+              </span>
+            )}
           </span>
           <span
             className={`text-xs font-semibold px-2.5 py-1 rounded-full self-start sm:self-auto ${
