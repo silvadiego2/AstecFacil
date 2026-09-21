@@ -33,9 +33,10 @@ const ESTADO_INICIAL: ProcessoFormData = {
   tipoSolicitacao: 'NOVA_LICENCA',
   numeroLicencaAnterior: '',
   modalidade: 'DISPENSA',
+  destinatario_parecer: 'CLA',
   cnae_principal: { codigo: '', descricao: '' },
   cnaes_secundarios: [],
-  documentos_conferidos: [], // Inicia vazio para auditoria técnica real
+  documentos_conferidos: [],
   status_parecer: 'DEFERIMENTO',
   texto_parecer: '',
   possui_atividade_industrial: false,
@@ -90,6 +91,7 @@ export default function App() {
       tipoSolicitacao: proc.modalidade === 'RENOVACAO_LAS' ? 'RENOVACAO' : 'NOVA_LICENCA',
       numeroLicencaAnterior: proc.numeroLicencaAnterior || '',
       modalidade: proc.modalidade,
+      destinatario_parecer: proc.destinatario_parecer || (proc.modalidade === 'RENOVACAO_LAS' ? 'GABINETE' : 'CLA'),
       cnae_principal: { codigo: '', descricao: '' },
       cnaes_secundarios: [],
       documentos_conferidos: proc.documentos_conferidos || [],
@@ -111,7 +113,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
-      {/* Header Governamental */}
       <header className="bg-slate-900 text-white border-b-4 border-emerald-600 shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -137,9 +138,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Conteúdo Principal */}
       <main className="max-w-6xl w-full mx-auto px-4 py-8 flex-1">
-        {/* Navegador das 4 Etapas (Wizard) */}
         <div className="bg-white rounded-2xl p-4 mb-8 shadow-sm border border-slate-200">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {steps.map(s => {
@@ -182,7 +181,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Card do Formulário da Etapa */}
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-200">
           {etapaAtual === 1 && (
             <Step1Identificacao formData={formData} setFormData={setFormData} />
@@ -204,7 +202,6 @@ export default function App() {
             />
           )}
 
-          {/* Navegação Inferior */}
           <div className="mt-8 pt-6 border-t border-slate-200 flex items-center justify-between">
             <button
               type="button"
@@ -230,7 +227,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modal de Histórico de Processos */}
       {modalHistorico && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200">
