@@ -10,14 +10,14 @@ import {
   ClipboardPaste, 
   Check, 
   Sparkles, 
-  X,
-  FileCheck
+  X 
 } from 'lucide-react';
 import { ProcessoFormData } from '../types';
 import { 
   ZONEAMENTOS_CAMACARI, 
   inferirZoneamentoPorBairro, 
-  parseTextoDoSisSedur 
+  parseTextoDoSisSedur,
+  formatarCnpj 
 } from '../data/normativasCamacari';
 import { consultarCnpjBrasilApi } from '../services/api';
 
@@ -30,21 +30,47 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [erroCnpj, setErroCnpj] = useState<string | null>(null);
 
-  // Modal de Captura do SIS-SEDUR
   const [modalImportar, setModalImportar] = useState(false);
   const [textoCopiadoSisSedur, setTextoCopiadoSisSedur] = useState('');
   const [processandoImportacao, setProcessandoImportacao] = useState(false);
   const [feedbackImportacao, setFeedbackImportacao] = useState<string | null>(null);
 
+  // Máscara inteligente para o número do processo (suporta 3 ou 4 dígitos no bloco sequencial)
   const handleProcessoChange = (val: string) => {
-    let clean = val.replace(/\D/g, '').slice(0, 17);
+    // Se o usuário colou com pontos (ex: 02611.22.09.1073.2026), preserva diretamente
+    if (/^\d{5}\.\d{2}\.\d{2}\.\d{3,5}\.\d{4}$/.test(val.trim())) {
+      setFormData(prev => ({ ...prev, numero_processo: val.trim() }));
+      return;
+    }
+
+    const clean = val.replace(/\D/g, '').slice(0, 18);
     let masked = clean;
-    if (clean.length > 5) masked = `${clean.slice(0, 5)}.${clean.slice(5)}`;
-    if (clean.length > 7) masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7)}`;
-    if (clean.length > 9) masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7, 9)}.${clean.slice(9)}`;
-    if (clean.length > 12) masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7, 9)}.${clean.slice(9, 12)}.${clean.slice(12, 16)}`;
+
+    if (clean.length <= 16) {
+      // Padrão com sequencial de 3 dígitos (ex: 01452.22.09.001.2026)
+      if (clean.length > 5) masked = `${clean.slice(0, 5)}.${clean.slice(5)}`;
+      if (clean.length > 7) masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7)}`;
+      if (clean.length > 9) masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7, 9)}.${clean.slice(9)}`;
+      if (clean.length > 12) masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7, 9)}.${clean.slice(9, 12)}.${clean.slice(12, 16)}`;
+    } else {
+      // Padrão com sequencial de 4 dígitos (ex: 02611.22.09.1073.2026)
+      masked = `${clean.slice(0, 5)}.${clean.slice(5, 7)}.${clean.slice(7, 9)}.${clean.slice(9, 13)}.${clean.slice(13, 17)}`;
+    }
 
     setFormData(prev => ({ ...prev, numero_processo: masked }));
+  };
+
+  // Máscara automática de digitação do CNPJ
+  const handleCnpjChange = (val: string) => {
+    const raw = val.replace(/\D/g, '').slice(0, 14);
+    let formatted = raw;
+
+    if (raw.length > 2) formatted = `${raw.slice(0, 2)}.${raw.slice(2)}`;
+    if (raw.length > 5) formatted = `${raw.slice(0, 2)}.${raw.slice(2, 5)}.${raw.slice(5)}`;
+    if (raw.length > 8) formatted = `${raw.slice(0, 2)}.${raw.slice(2, 5)}.${raw.slice(5, 8)}/${raw.slice(8)}`;
+    if (raw.length > 12) formatted = `${raw.slice(0, 2)}.${raw.slice(2, 5)}.${raw.slice(5, 8)}/${raw.slice(8, 12)}-${raw.slice(12, 14)}`;
+
+    setFormData(prev => ({ ...prev, cnpj: formatted }));
   };
 
   const handleBairroChange = (novoBairro: string) => {
@@ -56,10 +82,10 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     }));
   };
 
-  const handleConsultarCnpj = async () => {
-    const rawCnpj = formData.cnpj.replace(/\D/g, '');
+  const dispararConsultaBrasilApi = async (cnpjFormatadoOuLimpo: string) => {
+    const rawCnpj = cnpjFormatadoOuLimpo.replace(/\D/g, '');
     if (rawCnpj.length !== 14) {
-      setErroCnpj('Informe um CNPJ válido com 14 dígitos antes de consultar.');
+      setErroCnpj('Informe um CNPJ válido com 14 dígitos para consultar.');
       return;
     }
 
@@ -80,6 +106,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
 
       setFormData(prev => ({
         ...prev,
+        cnpj: formatarCnpj(rawCnpj),
         interessado: data.razao_social || data.nome_fantasia || prev.interessado,
         endereco: logradouroCompleto || prev.endereco,
         bairro: bairroRetornado || prev.bairro,
@@ -95,31 +122,34 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         })),
       }));
     } catch (err: any) {
-      setErroCnpj(err.message || 'Falha ao buscar dados na BrasilAPI. Preencha manualmente.');
+      setErroCnpj(err.message || 'Falha ao buscar dados na BrasilAPI.');
     } finally {
       setLoadingCnpj(false);
     }
   };
 
-  // PARSER ROBUSTO: LÊ SIS-SEDUR, PREENCHE NATUREZA E DISPARA BRASILAPI
+  // Processa o texto colado do SIS-SEDUR
   const handleProcessarTextoColado = async () => {
     if (!textoCopiadoSisSedur.trim()) return;
 
     setProcessandoImportacao(true);
-    setFeedbackImportacao('Lendo dados do processo e buscando CNPJ na Receita Federal...');
+    setFeedbackImportacao('Lendo dados do processo...');
 
     try {
       const parsed = parseTextoDoSisSedur(textoCopiadoSisSedur);
+      const cnpjFormatado = parsed.cnpj ? formatarCnpj(parsed.cnpj) : '';
+
       let dadosBrasilApi: any = null;
 
-      // Se identificou CNPJ, faz a chamada direta e imediata na BrasilAPI
-      if (parsed.cnpj) {
-        const cnpjLimpo = parsed.cnpj.replace(/\D/g, '');
-        if (cnpjLimpo.length === 14) {
+      // Se identificou o CNPJ, executa imediatamente a consulta na Receita Federal
+      if (cnpjFormatado) {
+        const raw = cnpjFormatado.replace(/\D/g, '');
+        if (raw.length === 14) {
+          setFeedbackImportacao(`CNPJ ${cnpjFormatado} detectado. Consultando Receita Federal...`);
           try {
-            dadosBrasilApi = await consultarCnpjBrasilApi(cnpjLimpo);
+            dadosBrasilApi = await consultarCnpjBrasilApi(raw);
           } catch (apiErr) {
-            console.warn('BrasilAPI não retornou dados para:', cnpjLimpo, apiErr);
+            console.warn('Erro ao consultar BrasilAPI:', apiErr);
           }
         }
       }
@@ -169,7 +199,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
           modalidade: parsed.modalidade || (parsed.tipoSolicitacao === 'RENOVACAO' ? 'RENOVACAO_LAS' : prev.modalidade),
           numeroLicencaAnterior: parsed.numeroLicencaAnterior || prev.numeroLicencaAnterior,
           numero_processo: parsed.numero_processo || prev.numero_processo,
-          cnpj: parsed.cnpj || prev.cnpj,
+          cnpj: cnpjFormatado || prev.cnpj,
           interessado: interessadoFinal,
           endereco: enderecoFinal,
           bairro: bairroFinal,
@@ -183,28 +213,22 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         };
       });
 
-      const itensIdentificados: string[] = [];
-      if (parsed.tipoSolicitacao === 'RENOVACAO') itensIdentificados.push('Renovação de LAS identificada');
-      if (parsed.cnpj) itensIdentificados.push(`CNPJ ${parsed.cnpj}`);
-      if (dadosBrasilApi) itensIdentificados.push(`Razão Social: ${dadosBrasilApi.razao_social}`);
-      if (parsed.documentos_identificados.length > 0) {
-        itensIdentificados.push(`${parsed.documentos_identificados.length} doc(s) marcados`);
-      }
+      const itens = [];
+      if (parsed.tipoSolicitacao === 'RENOVACAO') itens.push('Demanda: Renovação (RLAS)');
+      if (cnpjFormatado) itens.push(`CNPJ: ${cnpjFormatado}`);
+      if (dadosBrasilApi) itens.push(`Razão: ${dadosBrasilApi.razao_social}`);
+      if (parsed.documentos_identificados.length > 0) itens.push(`${parsed.documentos_identificados.length} doc(s) marcados`);
 
-      setFeedbackImportacao(
-        itensIdentificados.length > 0
-          ? `Identificado: ${itensIdentificados.join(' | ')}`
-          : 'Processamento concluído. Verifique os campos populados.'
-      );
+      setFeedbackImportacao(itens.length > 0 ? `Sucesso! ${itens.join(' | ')}` : 'Dados atualizados no formulário.');
 
       setTimeout(() => {
         setModalImportar(false);
         setTextoCopiadoSisSedur('');
         setFeedbackImportacao(null);
-      }, 2000);
+      }, 1500);
 
     } catch (err: any) {
-      setFeedbackImportacao(`Aviso: ${err.message || 'Erro no processamento'}`);
+      setFeedbackImportacao(`Aviso: ${err.message || 'Erro ao processar'}`);
     } finally {
       setProcessandoImportacao(false);
     }
@@ -212,7 +236,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
+      {/* Cabeçalho com Botão de Importação */}
       <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -220,7 +244,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             Etapa 1: Identificação do Processo e Localização
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Preencha os dados do processo ou importe direto da tela do SIS-SEDUR.
+            Preencha os dados cadastrais ou importe da tela do SIS-SEDUR.
           </p>
         </div>
 
@@ -314,12 +338,13 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             type="text"
             value={formData.numero_processo}
             onChange={e => handleProcessoChange(e.target.value)}
-            placeholder="Ex: 01452.22.09.001.2026"
+            placeholder="Ex: 02611.22.09.1073.2026"
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 font-mono tracking-wide"
           />
+          <span className="text-[11px] text-slate-400">Padrão: 00000.22.09.0000.2026</span>
         </div>
 
-        {/* CNPJ */}
+        {/* CNPJ com máscara automática */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-1">
             CNPJ do Interessado *
@@ -328,13 +353,13 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             <input
               type="text"
               value={formData.cnpj}
-              onChange={e => setFormData(p => ({ ...p, cnpj: e.target.value }))}
+              onChange={e => handleCnpjChange(e.target.value)}
               placeholder="00.000.000/0000-00"
               className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-slate-900 font-mono"
             />
             <button
               type="button"
-              onClick={handleConsultarCnpj}
+              onClick={() => dispararConsultaBrasilApi(formData.cnpj)}
               disabled={loadingCnpj}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg flex items-center gap-2 text-sm font-medium transition disabled:opacity-50"
             >
@@ -372,7 +397,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
           />
         </div>
 
-        {/* Bairro com Autocompletar de Zoneamento */}
+        {/* Bairro com Autocompletar */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-1 flex items-center justify-between">
             <span>Bairro / Distrito de Camaçari</span>
@@ -384,7 +409,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             type="text"
             value={formData.bairro}
             onChange={e => handleBairroChange(e.target.value)}
-            placeholder="Ex: Polo Petroquímico, Ponto Certo, Catu de Abrantes, Guarajuba"
+            placeholder="Ex: Polo Petroquímico, Ponto Certo, Catu de Abrantes"
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
           />
         </div>
@@ -441,7 +466,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         </div>
       </div>
 
-      {/* MODAL DE IMPORTAÇÃO RÁPIDA DO SIS-SEDUR */}
+      {/* MODAL DE IMPORTAÇÃO POR COLAGEM */}
       {modalImportar && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
@@ -461,7 +486,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
 
             <div className="p-5 space-y-4">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Copie os dados da tela do processo no SIS-SEDUR (cabeçalho, interessado, CNPJ e a lista de documentos anexados) e cole abaixo. O sistema identificará a natureza da demanda, o CNPJ, consultará a Receita Federal e marcará os documentos.
+                Copie o texto da tela do processo no SIS-SEDUR (mesmo com quebras de linha entre rótulos e valores) e cole abaixo. O sistema identificará o processo, CNPJ formatado, razão social e documentos anexados.
               </p>
 
               <textarea
@@ -502,7 +527,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
                 {processandoImportacao ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Buscando na Receita Federal...
+                    Consultando Receita e Processando...
                   </>
                 ) : (
                   <>
