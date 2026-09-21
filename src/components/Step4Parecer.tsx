@@ -9,9 +9,10 @@ import {
   FileText, 
   CheckCircle2, 
   AlertTriangle,
-  FileSearch
+  FileSearch,
+  SendHorizontal
 } from 'lucide-react';
-import { ProcessoFormData, StatusParecer } from '../types';
+import { ProcessoFormData, StatusParecer, DestinatarioParecer } from '../types';
 import { FUNDAMENTACAO_LEGAL, DOCUMENTOS_BASE_CAMACARI, DocumentoBaseItem } from '../data/normativasCamacari';
 import { salvarProcessoNoMysql } from '../services/api';
 
@@ -31,7 +32,6 @@ export const Step4Parecer: React.FC<Step4Props> = ({
   const [sucessoSalvar, setSucessoSalvar] = useState<string | null>(null);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
-  // Identifica quais documentos OBRIGATÓRIOS aplicáveis não foram conferidos
   const documentosFaltantes = useMemo(() => {
     const aplicaveis = DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
       if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
@@ -45,120 +45,137 @@ export const Step4Parecer: React.FC<Step4Props> = ({
 
   const temPendenciaDocumental = documentosFaltantes.length > 0;
 
-  // Gerador dinâmico do Parecer da ASTEC
-  const gerarParecerAutomatico = () => {
-    const dataExtenso = new Intl.DateTimeFormat('pt-BR', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }).format(new Date());
+  // Sugestão automática de destinatário com base na modalidade
+  const destinatarioSugerido: DestinatarioParecer = useMemo(() => {
+    if (formData.modalidade === 'RENOVACAO_LAS') return 'GABINETE';
+    if (formData.modalidade === 'DISPENSA') return 'CLA';
+    return formData.destinatario_parecer || 'CLA';
+  }, [formData.modalidade, formData.destinatario_parecer]);
 
-    const cnaePrinc = formData.cnae_principal?.descricao
-      ? `${formData.cnae_principal.codigo} - ${formData.cnae_principal.descricao}`
-      : 'Não informado no formulário';
+  // Gerador dinâmico do Parecer Técnico da ASTEC
+  const gerarParecerAutomatico = (destinatarioAlvo?: DestinatarioParecer) => {
+    const destinatario = destinatarioAlvo || formData.destinatario_parecer || destinatarioSugerido;
+
+    const nomeEmpresa = formData.interessado ? formData.interessado.trim() : '[NOME DO INTERESSADO]';
+    const cnpjEmpresa = formData.cnpj ? formData.cnpj.trim() : '[CNPJ]';
+    const numeroProcesso = formData.numero_processo ? formData.numero_processo.trim() : '[Nº PROCESSO]';
+
+    const localizacaoCompleta = [
+      formData.endereco?.trim(),
+      formData.bairro?.trim(),
+      'Camaçari/BA'
+    ].filter(Boolean).join(', ') || '[ENDEREÇO COMPLETO]';
+
+    const coordenadasFormatadas = formData.coordenadas?.trim() || 'conforme RCE';
+    const zoneamentoFormatado = formData.zona_urbanistica || 'ZOUC 1';
 
     const modalidadeTexto =
       formData.modalidade === 'RENOVACAO_LAS'
         ? 'RENOVAÇÃO DE LICENÇA AMBIENTAL SIMPLIFICADA (RLAS)'
         : formData.modalidade === 'DISPENSA'
-        ? 'DISPENSA DE LICENÇA AMBIENTAL (DLA)'
+        ? 'DISPENSA DE LICENCIAMENTO AMBIENTAL (DLA)'
         : formData.modalidade === 'INEXIGIBILIDADE'
-        ? 'DECLARAÇÃO DE INEXIGIBILIDADE DE LICENCIAMENTO AMBIENTAL'
+        ? 'DECLARAÇÃO DE INEXIGIBILIDADE'
         : 'LICENÇA AMBIENTAL SIMPLIFICADA (LAS)';
 
-    // Dados interpolados do processo
-    const nomeEmpresa = formData.interessado ? formData.interessado.trim() : '[NOME DA EMPRESA]';
-    const cnpjEmpresa = formData.cnpj ? formData.cnpj.trim() : '[INSERIR CNPJ]';
-    
-    const localizacaoCompleta = [
-      formData.endereco?.trim(),
-      formData.bairro?.trim(),
-      'Camaçari - BA'
-    ].filter(Boolean).join(', ') || '[Localização]';
+    const atividadeDescricao = formData.cnae_principal?.descricao
+      ? `${formData.cnae_principal.descricao}`
+      : 'atividades econômicas constantes no requerimento';
 
-    const areaDeclarada = formData.area_m2 && formData.area_m2 > 0 
-      ? `${formData.area_m2} m²` 
-      : '[Área Construída Ocupada]';
+    // Vocativo de abertura
+    const vocativoDestinatario = 
+      destinatario === 'GABINETE'
+        ? 'AO GABINETE DO SECRETÁRIO,'
+        : destinatario === 'CLU'
+        ? 'À CLU,'
+        : 'À CLA,';
 
-    const zoneamentoFormatado = formData.zona_urbanistica 
-      ? formData.zona_urbanistica 
-      : '[Zoneamento Urbanístico]';
+    // Fecho / Encaminhamento final
+    let fechoEncaminhamento = '';
+    if (formData.status_parecer === 'DILIGENCIA' || temPendenciaDocumental) {
+      if (destinatario === 'GABINETE') {
+        fechoEncaminhamento = 'ENCAMINHEM-SE OS AUTOS AO GABINETE para ciência e notificação ao interessado.';
+      } else if (destinatario === 'CLU') {
+        fechoEncaminhamento = 'RESTITUAM-SE OS AUTOS À CLU para notificação e prosseguimento.';
+      } else {
+        fechoEncaminhamento = 'RESTITUAM-SE OS AUTOS À CLA para notificação e prosseguimento.';
+      }
+    } else {
+      if (destinatario === 'GABINETE') {
+        fechoEncaminhamento = 'ENCAMINHEM-SE OS AUTOS AO GABINETE DA SEDUR para deliberação, lavratura e publicação da respectiva Portaria autorizativa.';
+      } else if (destinatario === 'CLU') {
+        fechoEncaminhamento = 'RESTITUAM-SE OS AUTOS À CLU para as providências cabíveis e emissão do ato.';
+      } else {
+        fechoEncaminhamento = 'RESTITUAM-SE OS AUTOS À CLA para emissão do ato e prosseguimento.';
+      }
+    }
 
-    // Frase complementar de renovação
-    const complementoRenovacao = formData.modalidade === 'RENOVACAO_LAS'
-      ? ` O pleito de RENOVAÇÃO da licença ambiental foi anteriormente concedida (${formData.numeroLicencaAnterior ? `Portaria/Licença nº ${formData.numeroLicencaAnterior}` : 'Portaria/Licença nº 138/2023'}), tendo o requerente apresentado o relatório de atendimento às condicionantes técnicas exigidas.`
-      : '';
-
-    // Ressalva de atividade fabril em bancada
-    const ressalvaIndustrial = formData.possui_atividade_industrial
-      ? `\nRessalta-se que, consoante declarações constantes no Relatório de Caracterização do Empreendimento (RCE), a atividade que ensejou o enquadramento em CNAE secundário fabril restringe-se à montagem artesanal/sob demanda em bancada interna, sem queima de combustíveis fósseis, sem geração de efluentes líquidos industriais e sem emissões atmosféricas poluentes significativas no galpão sob análise.`
-      : '';
-
-    // Redação da Seção 3 (Conclusão ou Diligência)
-    let secaoConclusao = '';
+    let textoParecerOficial = '';
 
     if (formData.status_parecer === 'DILIGENCIA' || temPendenciaDocumental) {
       const listaPendencias = documentosFaltantes.length > 0
         ? documentosFaltantes.map((d, i) => `   ${i + 1}. ${d.nome}`).join('\n')
-        : '   1. Complementação de esclarecimentos técnicos sobre o processo operacional.';
+        : '   1. Complementação de informações técnicas operacionais.';
 
-      secaoConclusao = `3. CONCLUSÃO E PROPOSIÇÃO DE DILIGÊNCIA TÉCNICA
-Da análise dos autos eletrônicos, constata-se a AUSÊNCIA de elementos obrigatórios indispensáveis à conclusão do mérito ambiental, restando pendente a juntada dos seguintes itens:
+      textoParecerOficial = `INTERESSADO:
+${nomeEmpresa}
+PROCESSO ADMINISTRATIVO Nº: ${numeroProcesso}
+CNPJ:
+${cnpjEmpresa}
+ENDEREÇO:
+${localizacaoCompleta}
+ASSUNTO:
+${modalidadeTexto}
+
+${vocativoDestinatario}
+
+Trata-se de requerimento de ${modalidadeTexto}, formulado por ${nomeEmpresa}, inscrito no CNPJ sob o nº ${cnpjEmpresa}, estabelecimento localizado na ${localizacaoCompleta}, coordenadas ${coordenadasFormatadas}, inserido na ${zoneamentoFormatado}.
+
+Da análise preliminar das informações constantes dos autos eletrônicos, constata-se a AUSÊNCIA de documentos e elementos técnicos indispensáveis ao prosseguimento da análise meritória, restando pendente a juntada dos seguintes itens:
+
 ${listaPendencias}
 
-Diante do exposto, esta Assessoria Técnica manifesta-se pela BAIXA DOS AUTOS EM DILIGÊNCIA, sugerindo a notificação do requerente via SIS-SEDUR para que, no prazo improrrogável de 30 (trinta) dias, promova a integral regularização da instrução documental, sob pena de indeferimento e arquivamento do feito.`;
+Ante o exposto, esta Assessoria Técnica (ASTEC) manifesta-se pela BAIXA DOS AUTOS EM DILIGÊNCIA para notificação do interessado no prazo regulamentar de 30 (trinta) dias para cumprimento integral das pendências sobreditas.
+
+${fechoEncaminhamento}`;
     } else {
-      secaoConclusao = `3. CONCLUSÃO E SALVAGUARDAS TÉCNICAS
-Isto posto, devidamente instruído o feito e atendidos os preceitos normativos vigentes, esta Assessoria Técnica - ASTEC manifesta-se favorável ao DEFERIMENTO e VALIDAÇÃO do pedido de ${modalidadeTexto}, condicionada a sua plena eficácia à observância das seguintes condicionantes e salvaguardas:
+      const ressalvaDinamica = formData.modalidade === 'RENOVACAO_LAS'
+        ? `Trata-se do pleito de RENOVAÇÃO da licença ambiental anteriormente outorgada (${formData.numeroLicencaAnterior || 'conforme licença anterior acostada aos autos'}), tendo o requerente apresentado o relatório de atendimento às condicionantes técnicas exigidas e declarado a inexistência de alteração ou ampliação de porte e processo tecnológico no estabelecimento.`
+        : `a dinâmica operacional no imóvel consiste precipuamente em ${atividadeDescricao}, com montagem sob demanda e em escala compatível com as instalações, sem estoque de matéria-prima perigosa a granel e sem geração de efluentes líquidos industriais.`;
 
-a) Fica expressamente VEDADA qualquer manipulação, estocagem a granel ou fracionamento de produtos químicos perigosos ou inflamáveis não licenciados especificamente perante esta SEDUR;
-b) Proibição absoluta de implantação de lava-jato de frotas, posto interno de abastecimento ou oficina mecânica pesada no galpão sem licenciamento ambiental autônomo;
-c) Manutenção em plena vigência da Consulta de Viabilidade Urbanística / Alvará de Localização e Funcionamento, do Alvará Sanitário emitido pela SESAU/VISA e do Certificado de Licença do Corpo de Bombeiros Militar (AVCB/CLCB);
-d) Correto acondicionamento e destinação ambientalmente adequada de todos os resíduos sólidos gerados, mantendo em arquivo comprobatório os Manifestos de Transporte de Resíduos (MTR/SINIR) e notas fiscais de destinação final licenciada.
+      textoParecerOficial = `INTERESSADO:
+${nomeEmpresa}
+PROCESSO ADMINISTRATIVO Nº: ${numeroProcesso}
+CNPJ:
+${cnpjEmpresa}
+ENDEREÇO:
+${localizacaoCompleta}
+ASSUNTO:
+${modalidadeTexto}
 
-Encaminhem-se os autos à DIRETORIA DE MEIO AMBIENTE - DIRAM para homologação final e expedição do respectivo ato autorizativo.`;
+${vocativoDestinatario}
+
+Trata-se de requerimento de ${modalidadeTexto}, para a atividade de ${atividadeDescricao}, formulado por ${nomeEmpresa}, inscrito no CNPJ sob o nº ${cnpjEmpresa}, estabelecimento localizado na ${localizacaoCompleta}, coordenadas ${coordenadasFormatadas}, inserido na ${zoneamentoFormatado}.
+
+Da análise das informações constantes do requerimento e no Relatório de Caracterização do Empreendimento (RCE), verifica-se que ${ressalvaDinamica}
+
+Assim, constata-se que a operação apresenta porte e potencial poluidor classificados abaixo dos limites exigidos para licenciamento ordinário ou simplificado (LAS), autorizando a emissão da ${modalidadeTexto}, nos termos do art. 53, § 2º, e Anexo IV da Lei Complementar Municipal nº 1.876/2023, c/c a Resolução CEPRAM nº 4.579/2018 e o Decreto Estadual nº 14.024/2012.
+
+Ante o exposto, esta Assessoria Técnica (ASTEC) opina pelo DEFERIMENTO da ${modalidadeTexto} especificamente para as atividades operacionais sobreditas.
+
+${fechoEncaminhamento}`;
     }
 
-    const texto = `PREFEITURA MUNICIPAL DE CAMAÇARI
-SECRETARIA DO DESENVOLVIMENTO URBANO E MEIO AMBIENTE - SEDUR
-ASSESSORIA TÉCNICA - ASTEC
-PARECER TÉCNICO-JURÍDICO AMBIENTAL Nº ASTEC/${formData.numero_processo || 'PROCESSO'}/2026
-
-À DIRETORIA DE MEIO AMBIENTE - DIRAM
-Assunto: Análise de Enquadramento e Regularidade Ambiental
-Processo Administrativo SIS-SEDUR: ${formData.numero_processo || '[NÃO INFORMADO]'}
-Requerente / Interessado: ${nomeEmpresa}
-CNPJ: ${cnpjEmpresa}
-Localização: ${localizacaoCompleta}
-Coordenadas Geográficas (SIRGAS 2000): ${formData.coordenadas || '[COORDENADAS]'}
-Zoneamento Urbanístico: ${zoneamentoFormatado} (LC nº 1.873/2023 - PDDU)
-Área Construída Ocupada: ${areaDeclarada}
-Atividade Principal: ${cnaePrinc}
-
-1. RELATÓRIO E INSTRUÇÃO PROCESSUAL
-Trata-se de requerimento administrativo referente a solicitação de ${modalidadeTexto}, formulada por ${nomeEmpresa} (CNPJ: ${cnpjEmpresa}) para o empreendimento situado à ${localizacaoCompleta}, com área declarada de ${areaDeclarada}, inserido na ${zoneamentoFormatado}, para o exercício das atividades econômicas supracitada.${complementoRenovacao}
-
-Compulsando os autos, procedeu-se ao exame da instrução documental obrigatória exigida pela legislação ambiental municipal e pelos atos regulamentares da SEDUR.
-
-2. DA FUNDAMENTAÇÃO LEGAL E ENQUADRAMENTO AMBIENTAL
-A presente manifestação técnica fundamenta-se nos termos da ${FUNDAMENTACAO_LEGAL.codigoMeioAmbiente}, da ${FUNDAMENTACAO_LEGAL.pddu}, da ${FUNDAMENTACAO_LEGAL.codigoUrbanistico}, bem como nas diretrizes gerais do ${FUNDAMENTACAO_LEGAL.decretoEstadual} e das ${FUNDAMENTACAO_LEGAL.cepram}.
-
-À luz do Anexo IV e do Art. 14 da Lei Complementar Municipal nº 1.876/2023, o porte do empreendimento aliado à tipologia do seu processo operacional e a ausência de passivos ambientais conhecidos respaldam o enquadramento no rito administrativo de ${modalidadeTexto}.${ressalvaIndustrial}
-
-${secaoConclusao}
-
-Camaçari - BA, ${dataExtenso}.
-
-___________________________________________________________
-ASTEC - Assessoria Técnica Especializada em Meio Ambiente
-SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
-
-    setFormData(prev => ({ ...prev, texto_parecer: texto }));
+    setFormData(prev => ({ 
+      ...prev, 
+      destinatario_parecer: destinatario,
+      texto_parecer: textoParecerOficial 
+    }));
   };
 
   useEffect(() => {
     if (!formData.texto_parecer) {
-      gerarParecerAutomatico();
+      gerarParecerAutomatico(destinatarioSugerido);
     }
   }, []);
 
@@ -168,7 +185,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
       setCopiado(true);
       setTimeout(() => setCopiado(false), 3000);
     } catch (err) {
-      alert('Não foi possível copiar automaticamente para a área de transferência.');
+      alert('Não foi possível copiar para a área de transferência.');
     }
   };
 
@@ -193,6 +210,10 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
     setTimeout(() => gerarParecerAutomatico(), 50);
   };
 
+  const handleMudarDestinatario = (dest: DestinatarioParecer) => {
+    gerarParecerAutomatico(dest);
+  };
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
@@ -200,24 +221,72 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <FileText className="w-6 h-6 text-slate-700" />
-            Etapa 4: Parecer Técnico-Jurídico da ASTEC
+            Etapa 4: Parecer Técnico da ASTEC
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Minuta formal padronizada direcionada à DIRAM, fundamentada nas leis municipais de Camaçari.
+            Minuta formal da ASTEC fundamentada no Art. 53, § 2º da LC nº 1.876/2023.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={gerarParecerAutomatico}
+          onClick={() => gerarParecerAutomatico()}
           className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition self-start md:self-center"
         >
           <Sparkles className="w-4 h-4 text-amber-600" />
-          Regenerar Minuta com Dados Atuais
+          Regenerar Minuta
         </button>
       </div>
 
-      {/* Alerta de Documentação Faltante / Recomendação */}
+      {/* Seletor de Destinatário (CLA, CLU ou Gabinete) */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+          <SendHorizontal className="w-4 h-4 text-emerald-600" />
+          Destinatário do Parecer Técnico:
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            type="button"
+            onClick={() => handleMudarDestinatario('CLA')}
+            className={`p-3 rounded-lg border-2 text-left transition ${
+              formData.destinatario_parecer === 'CLA'
+                ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold shadow-sm'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <div className="text-sm">À CLA</div>
+            <div className="text-[11px] font-normal text-slate-500">Coord. Licenciamento Ambiental (Dispensa/DLA)</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleMudarDestinatario('GABINETE')}
+            className={`p-3 rounded-lg border-2 text-left transition ${
+              formData.destinatario_parecer === 'GABINETE'
+                ? 'border-purple-600 bg-purple-50 text-purple-950 font-bold shadow-sm'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <div className="text-sm">Ao Gabinete</div>
+            <div className="text-[11px] font-normal text-slate-500">Gabinete SEDUR (Renovação de LAS / Portarias)</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleMudarDestinatario('CLU')}
+            className={`p-3 rounded-lg border-2 text-left transition ${
+              formData.destinatario_parecer === 'CLU'
+                ? 'border-blue-600 bg-blue-50 text-blue-950 font-bold shadow-sm'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <div className="text-sm">À CLU</div>
+            <div className="text-[11px] font-normal text-slate-500">Coord. Licenciamento Urbanístico (Alvarás)</div>
+          </button>
+        </div>
+      </div>
+
+      {/* Alerta de Documentação / Decisão */}
       {temPendenciaDocumental ? (
         <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -226,7 +295,7 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
               Atenção: Há {documentosFaltantes.length} documento(s) obrigatório(s) não conferido(s)
             </h3>
             <p className="text-xs text-amber-800 mt-1">
-              Para processos com pendência, a recomendação da ASTEC é a <strong>Baixa em Diligência</strong> para notificação no SIS-SEDUR.
+              Para processos com pendência, a recomendação padrão é a <strong>Baixa em Diligência</strong>.
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -266,7 +335,6 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
         </div>
       )}
 
-      {/* Mensagens de Sucesso ou Erro ao Salvar */}
       {sucessoSalvar && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-lg flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -280,14 +348,19 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
         </div>
       )}
 
-      {/* Editor de Texto do Parecer */}
+      {/* Textarea do Parecer Oficial */}
       <div>
         <div className="flex items-center justify-between mb-1">
           <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
             <FileSearch className="w-4 h-4 text-slate-500" />
-            Texto do Parecer Técnico (Editável pelo Analista):
+            Texto do Parecer Técnico (Editável):
           </label>
-          <span className="text-xs text-slate-400">Padrão Oficial ASTEC / DIRAM</span>
+          <span className="text-xs text-slate-500 font-medium">
+            Direcionado: <strong>{
+              formData.destinatario_parecer === 'GABINETE' ? 'Ao Gabinete' :
+              formData.destinatario_parecer === 'CLU' ? 'À CLU' : 'À CLA'
+            }</strong>
+          </span>
         </div>
         <textarea
           rows={17}
@@ -295,12 +368,9 @@ SEDUR - Secretaria do Desenvolvimento Urbano e Meio Ambiente`;
           onChange={e => setFormData(p => ({ ...p, texto_parecer: e.target.value }))}
           className="w-full p-4 border border-slate-300 rounded-xl font-mono text-xs leading-relaxed text-slate-900 bg-white focus:ring-2 focus:ring-slate-600 focus:border-slate-600 shadow-inner"
         />
-        <span className="text-xs text-slate-400 block mt-1">
-          Você pode revisar e ajustar a redação livremente antes de copiar para o SIS-SEDUR ou salvar.
-        </span>
       </div>
 
-      {/* Barra de Ações */}
+      {/* Botões de Ação */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <button
           type="button"
