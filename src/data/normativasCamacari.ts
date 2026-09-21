@@ -1,4 +1,5 @@
 // src/data/normativasCamacari.ts
+import { TipoSolicitacao, ModalidadeLicenca } from '../types';
 
 export interface ZoneamentoItem {
   valor: string;
@@ -143,7 +144,6 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  // Polo Petroquímico e Complexo Industrial
   if (
     b.includes('polo') || 
     b.includes('petroquimico') || 
@@ -154,7 +154,6 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
     return 'ZPIC';
   }
 
-  // Litoral e Orla Turística / Residencial
   if (
     b.includes('guarajuba') ||
     b.includes('itacimirim') ||
@@ -169,7 +168,6 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
     return 'ZTR';
   }
 
-  // Vetor Orla Sul e Abrantes
   if (
     b.includes('abrantes') ||
     b.includes('jaua') ||
@@ -182,7 +180,6 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
     return 'ZOUC 2';
   }
 
-  // Corredores Rodoviários e Zonas Comerciais
   if (
     b.includes('cascalheira') ||
     b.includes('parafuso') ||
@@ -195,12 +192,11 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
     return 'ZDC 3';
   }
 
-  // Bairros da Sede Urbana Consolidada (Padrão ZOUC 1)
   return 'ZOUC 1';
 }
 
 // ============================================================================
-// 2. PARSER RESILIENTE DO SIS-SEDUR COM DETECÇÃO AVANÇADA DE CNPJ
+// 2. PARSER RESILIENTE DO SIS-SEDUR (NATUREZA, CNPJ, METADADOS E DOCUMENTOS)
 // ============================================================================
 export interface ResultadoParsingSisSedur {
   numero_processo?: string;
@@ -211,67 +207,103 @@ export interface ResultadoParsingSisSedur {
   area_m2?: number;
   coordenadas?: string;
   zona_sugerida?: string;
+  tipoSolicitacao?: TipoSolicitacao;
+  modalidade?: ModalidadeLicenca;
+  numeroLicencaAnterior?: string;
   documentos_identificados: number[];
 }
 
-export function parseTextoDoSisSedur(texto: string): ResultadoParsingSisSedur {
+export function parseTextoDoSisSedur(textoBruto: string): ResultadoParsingSisSedur {
   const resultado: ResultadoParsingSisSedur = {
     documentos_identificados: [],
   };
 
-  if (!texto || texto.trim() === '') return resultado;
+  if (!textoBruto || textoBruto.trim() === '') return resultado;
 
-  const textoLimpo = texto.replace(/\r\n/g, '\n');
+  // Sanitiza espaços invisíveis (&nbsp;), quebras de linha e caracteres especiais
+  const textoLimpo = textoBruto
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\r\n/g, '\n');
 
-  // 1. Extração do Número do Processo SIS-SEDUR
+  const normalizadoGeral = textoLimpo
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  // 1. EXTRAÇÃO DA NATUREZA DA DEMANDA E MODALIDADE
+  if (/renovacao|renovaçao|renovação|\brlas\b/.test(normalizadoGeral)) {
+    resultado.tipoSolicitacao = 'RENOVACAO';
+    resultado.modalidade = 'RENOVACAO_LAS';
+  } else if (/dispensa|\bdla\b/.test(normalizadoGeral)) {
+    resultado.tipoSolicitacao = 'NOVA_LICENCA';
+    resultado.modalidade = 'DISPENSA';
+  } else if (/inexigibilidade/.test(normalizadoGeral)) {
+    resultado.tipoSolicitacao = 'NOVA_LICENCA';
+    resultado.modalidade = 'INEXIGIBILIDADE';
+  } else if (/simplificada|\blas\b/.test(normalizadoGeral)) {
+    resultado.tipoSolicitacao = 'NOVA_LICENCA';
+    resultado.modalidade = 'LAS';
+  }
+
+  // 2. EXTRAÇÃO DA LICENÇA ANTERIOR (Se houver)
+  const matchPortaria = textoLimpo.match(/(?:portaria|licen[cç]a\s+anterior|las\s+anterior)(?:\s*(?:sedur|n[ºo°.]))?\s*[:=-]?\s*([0-9A-Za-z\/\-\s]{3,25})/i);
+  if (matchPortaria) {
+    resultado.numeroLicencaAnterior = matchPortaria[0].trim();
+  }
+
+  // 3. EXTRAÇÃO DO NÚMERO DO PROCESSO SIS-SEDUR
   const regexProcesso = /(\d{4,6}[./]\d{2}[./]\d{2}[./]\d{3}[./]\d{4}|\d{5}\.\d{2}\.\d{2}\.\d{3}\.\d{4})/;
   const matchProcesso = textoLimpo.match(regexProcesso);
   if (matchProcesso) {
     resultado.numero_processo = matchProcesso[0].replace(/\//g, '.');
   }
 
-  // 2. Extração ULTRA-RESILIENTE de CNPJ (Formatado, com Rótulo ou Números Soltos)
-  let cnpjEncontrado: string | null = null;
+  // 4. EXTRAÇÃO MULTI-ESTRATÉGIA DO CNPJ
+  let cnpjDetectado: string | null = null;
 
-  // 2a. Busca por CNPJ formatado tradicional (XX.XXX.XXX/XXXX-XX)
-  const matchFormatado = textoLimpo.match(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/);
-  if (matchFormatado) {
-    cnpjEncontrado = matchFormatado[0];
+  // 4a. Busca flexível com pontuações e espaços internos (ex: 12.345.678 / 0001 - 90)
+  const matchFlexCnpj = textoLimpo.match(/\d{2}\s*[\.\s]\s*\d{3}\s*[\.\s]\s*\d{3}\s*[\/\.\s]\s*\d{4}\s*[\-\s]\s*\d{2}/);
+  if (matchFlexCnpj) {
+    const digitos = matchFlexCnpj[0].replace(/\D/g, '');
+    if (digitos.length === 14) {
+      cnpjDetectado = `${digitos.slice(0, 2)}.${digitos.slice(2, 5)}.${digitos.slice(5, 8)}/${digitos.slice(8, 12)}-${digitos.slice(12, 14)}`;
+    }
   }
 
-  // 2b. Busca por rótulo (CNPJ, CPF/CNPJ, Inscrição Federal)
-  if (!cnpjEncontrado) {
-    const matchRotulo = textoLimpo.match(/(?:cnpj|cpf\/cnpj|cnpj\/cpf|inscri[cç][aã]o\s+federal|doc(?:\.|umento)?)\s*[:=-]?\s*([0-9.\-\/\s]{11,20})/i);
+  // 4b. Busca pelo rótulo CNPJ ou CPF/CNPJ mesmo com quebra de linha ou tabela
+  if (!cnpjDetectado) {
+    const matchRotulo = textoLimpo.match(/(?:cnpj|cpf\/cnpj|cnpj\/cpf|inscri[cç][aã]o\s+federal)[\s\S]{0,40}?([0-9.\-\/\s]{14,22})/i);
     if (matchRotulo) {
       const digitos = matchRotulo[1].replace(/\D/g, '');
       if (digitos.length === 14) {
-        cnpjEncontrado = `${digitos.slice(0, 2)}.${digitos.slice(2, 5)}.${digitos.slice(5, 8)}/${digitos.slice(8, 12)}-${digitos.slice(12, 14)}`;
+        cnpjDetectado = `${digitos.slice(0, 2)}.${digitos.slice(2, 5)}.${digitos.slice(5, 8)}/${digitos.slice(8, 12)}-${digitos.slice(12, 14)}`;
       }
     }
   }
 
-  // 2c. Busca por qualquer sequência contínua de 14 dígitos no texto
-  if (!cnpjEncontrado) {
+  // 4c. Busca por qualquer sequência contínua de 14 dígitos numéricos
+  if (!cnpjDetectado) {
     const match14 = textoLimpo.match(/\b\d{14}\b/);
     if (match14) {
       const d = match14[0];
-      cnpjEncontrado = `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12, 14)}`;
+      cnpjDetectado = `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12, 14)}`;
     }
   }
 
-  if (cnpjEncontrado) {
-    resultado.cnpj = cnpjEncontrado;
+  if (cnpjDetectado) {
+    resultado.cnpj = cnpjDetectado;
   }
 
-  // 3. Extração da Razão Social / Interessado
-  const regexInteressado = /(?:interessado|requerente|razao social|razão social|empresa):\s*([^\n\r,]+)/i;
+  // 5. EXTRAÇÃO DA RAZÃO SOCIAL / INTERESSADO
+  const regexInteressado = /(?:interessado|requerente|razao social|razão social|empresa)[\s\S]{0,15}?:\s*([^\n\r,;]+)/i;
   const matchInteressado = textoLimpo.match(regexInteressado);
   if (matchInteressado) {
     resultado.interessado = matchInteressado[1].trim();
   }
 
-  // 4. Extração da Área em m²
-  const regexArea = /(?:area|área|area construida|área construída|area util|área útil):\s*([\d.,]+)\s*(?:m2|m²)?/i;
+  // 6. EXTRAÇÃO DA ÁREA (m²)
+  const regexArea = /(?:area|área|area construida|área construída|area util|área útil)[\s\S]{0,15}?:\s*([\d.,]+)\s*(?:m2|m²)?/i;
   const matchArea = textoLimpo.match(regexArea);
   if (matchArea) {
     const rawNum = matchArea[1].replace(/\./g, '').replace(',', '.');
@@ -281,52 +313,47 @@ export function parseTextoDoSisSedur(texto: string): ResultadoParsingSisSedur {
     }
   }
 
-  // 5. Extração do Bairro e Endereço
-  const regexBairro = /(?:bairro|distrito):\s*([^\n\r,]+)/i;
+  // 7. EXTRAÇÃO DO BAIRRO E ENDEREÇO
+  const regexBairro = /(?:bairro|distrito)[\s\S]{0,15}?:\s*([^\n\r,;]+)/i;
   const matchBairro = textoLimpo.match(regexBairro);
   if (matchBairro) {
     resultado.bairro = matchBairro[1].trim();
     resultado.zona_sugerida = inferirZoneamentoPorBairro(resultado.bairro);
   }
 
-  const regexEndereco = /(?:endereco|endereço|logradouro|localizacao|localização):\s*([^\n\r]+)/i;
+  const regexEndereco = /(?:endereco|endereço|logradouro|localizacao|localização)[\s\S]{0,15}?:\s*([^\n\r]+)/i;
   const matchEndereco = textoLimpo.match(regexEndereco);
   if (matchEndereco) {
     resultado.endereco = matchEndereco[1].trim();
   }
 
-  // 6. Extração de Coordenadas
-  const regexCoord = /(?:coordenadas|sirgas|utm|lat\/long|latitude):\s*([^\n\r]+)/i;
+  // 8. EXTRAÇÃO DE COORDENADAS
+  const regexCoord = /(?:coordenadas|sirgas|utm|latitude|lat\/long)[\s\S]{0,15}?:\s*([^\n\r]+)/i;
   const matchCoord = textoLimpo.match(regexCoord);
   if (matchCoord) {
     resultado.coordenadas = matchCoord[1].trim();
   }
 
-  // 7. LEITURA DOS TÍTULOS DOS DOCUMENTOS ANEXADOS
-  const normalizado = textoLimpo
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
+  // 9. LEITURA DOS TÍTULOS DOS DOCUMENTOS ANEXADOS
   const docsEncontrados = new Set<number>();
 
-  if (/requerimento|solicitacao|formulario padrao/.test(normalizado)) docsEncontrados.add(1);
-  if (/cartao cnpj|cartao do cnpj|comprovante cnpj|situacao cadastral/.test(normalizado)) docsEncontrados.add(2);
-  if (/contrato social|alteracao contratual|estatuto|juceb/.test(normalizado)) docsEncontrados.add(3);
-  if (/\brg\b|\bcpf\b|\bcnh\b|identificacao|identidade dos socios/.test(normalizado)) docsEncontrados.add(4);
-  if (/locacao|locaçao|aluguel|escritura|registro de imoveis|certidao de inteiro teor|\brgi\b|matricula/.test(normalizado)) docsEncontrados.add(5);
-  if (/iptu|certidao negativa|debitos municipais|tributos municipais|\bsefaz\b/.test(normalizado)) docsEncontrados.add(6);
-  if (/viabilidade|consulta previa|uso do solo|alvara de localizacao|alvara de funcionamento/.test(normalizado)) docsEncontrados.add(7);
-  if (/\brce\b|caracterizacao do empreendimento|relatorio de caracterizacao/.test(normalizado)) docsEncontrados.add(8);
-  if (/\bkml\b|\bkmz\b|croqui|georreferenciamento|sirgas 2000/.test(normalizado)) docsEncontrados.add(9);
-  if (/bombeiro|bombeiros|\bavcb\b|\bclcb\b|cbmba/.test(normalizado)) docsEncontrados.add(10);
-  if (/\bdam\b|taxa de abertura|taxa de licenciamento|comprovante de pagamento|quitacao bancaria/.test(normalizado)) docsEncontrados.add(11);
-  if (/embasa|abastecimento de agua|esgotamento|fossa septica/.test(normalizado)) docsEncontrados.add(12);
-  if (/coelba|neoenergia|energia eletrica|conta de luz/.test(normalizado)) docsEncontrados.add(13);
-  if (/sanitario|sanitaria|vigilancia|sesau|\bvisa\b/.test(normalizado)) docsEncontrados.add(14);
-  if (/vistoria|relatorio de vistoria|fiscalizacao|\bdiram\b|\bcla\b/.test(normalizado)) docsEncontrados.add(15);
-  if (/licenca anterior|licenca a renovar|las anterior|portaria sedur|portaria anterior/.test(normalizado)) docsEncontrados.add(16);
-  if (/condicionantes|cumprimento das condicionantes|\bmtr\b|\bsinir\b/.test(normalizado)) docsEncontrados.add(17);
+  if (/requerimento|solicitacao|formulario padrao/.test(normalizadoGeral)) docsEncontrados.add(1);
+  if (/cartao cnpj|cartao do cnpj|comprovante cnpj|situacao cadastral/.test(normalizadoGeral)) docsEncontrados.add(2);
+  if (/contrato social|alteracao contratual|estatuto|juceb/.test(normalizadoGeral)) docsEncontrados.add(3);
+  if (/\brg\b|\bcpf\b|\bcnh\b|identificacao|identidade dos socios/.test(normalizadoGeral)) docsEncontrados.add(4);
+  if (/locacao|locaçao|aluguel|escritura|registro de imoveis|certidao de inteiro teor|\brgi\b|matricula/.test(normalizadoGeral)) docsEncontrados.add(5);
+  if (/iptu|certidao negativa|debitos municipais|tributos municipais|\bsefaz\b/.test(normalizadoGeral)) docsEncontrados.add(6);
+  if (/viabilidade|consulta previa|uso do solo|alvara de localizacao|alvara de funcionamento/.test(normalizadoGeral)) docsEncontrados.add(7);
+  if (/\brce\b|caracterizacao do empreendimento|relatorio de caracterizacao/.test(normalizadoGeral)) docsEncontrados.add(8);
+  if (/\bkml\b|\bkmz\b|croqui|georreferenciamento|sirgas 2000/.test(normalizadoGeral)) docsEncontrados.add(9);
+  if (/bombeiro|bombeiros|\bavcb\b|\bclcb\b|cbmba/.test(normalizadoGeral)) docsEncontrados.add(10);
+  if (/\bdam\b|taxa de abertura|taxa de licenciamento|comprovante de pagamento|quitacao bancaria/.test(normalizadoGeral)) docsEncontrados.add(11);
+  if (/embasa|abastecimento de agua|esgotamento|fossa septica/.test(normalizadoGeral)) docsEncontrados.add(12);
+  if (/coelba|neoenergia|energia eletrica|conta de luz/.test(normalizadoGeral)) docsEncontrados.add(13);
+  if (/sanitario|sanitaria|vigilancia|sesau|\bvisa\b/.test(normalizadoGeral)) docsEncontrados.add(14);
+  if (/vistoria|relatorio de vistoria|fiscalizacao|\bdiram\b|\bcla\b/.test(normalizadoGeral)) docsEncontrados.add(15);
+  if (/licenca anterior|licenca a renovar|las anterior|portaria sedur|portaria anterior/.test(normalizadoGeral)) docsEncontrados.add(16);
+  if (/condicionantes|cumprimento das condicionantes|\bmtr\b|\bsinir\b/.test(normalizadoGeral)) docsEncontrados.add(17);
 
   resultado.documentos_identificados = Array.from(docsEncontrados);
 
