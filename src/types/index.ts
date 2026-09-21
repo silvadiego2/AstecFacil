@@ -3,6 +3,7 @@
 export type ModalidadeLicenca = 'DISPENSA' | 'LAS' | 'INEXIGIBILIDADE' | 'RENOVACAO_LAS';
 export type StatusParecer = 'DEFERIMENTO' | 'INDEFERIMENTO' | 'DILIGENCIA';
 export type TipoSolicitacao = 'NOVA_LICENCA' | 'RENOVACAO';
+export type DestinatarioParecer = 'CLA' | 'CLU' | 'GABINETE';
 
 export interface CnaeItem {
   codigo: number | string;
@@ -37,9 +38,10 @@ export interface ProcessoFormData {
   coordenadas: string;
   zona_urbanistica: string;
   area_m2: number;
-  tipoSolicitacao: TipoSolicitacao; // 'NOVA_LICENCA' ou 'RENOVACAO'
-  numeroLicencaAnterior?: string;   // Ex: Portaria SEDUR nº 123/2024
+  tipoSolicitacao: TipoSolicitacao;
+  numeroLicencaAnterior?: string;
   modalidade: ModalidadeLicenca;
+  destinatario_parecer: DestinatarioParecer;
   cnae_principal: CnaeItem;
   cnaes_secundarios: CnaeItem[];
   documentos_conferidos: number[];
