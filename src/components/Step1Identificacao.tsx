@@ -10,7 +10,8 @@ import {
   ClipboardPaste, 
   Check, 
   Sparkles, 
-  X 
+  X,
+  FileCheck
 } from 'lucide-react';
 import { ProcessoFormData } from '../types';
 import { 
@@ -46,7 +47,6 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     setFormData(prev => ({ ...prev, numero_processo: masked }));
   };
 
-  // Autocompleta o zoneamento ao digitar ou alterar o Bairro
   const handleBairroChange = (novoBairro: string) => {
     const zonaSugerida = inferirZoneamentoPorBairro(novoBairro);
     setFormData(prev => ({
@@ -56,7 +56,6 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     }));
   };
 
-  // Consulta manual à BrasilAPI
   const handleConsultarCnpj = async () => {
     const rawCnpj = formData.cnpj.replace(/\D/g, '');
     if (rawCnpj.length !== 14) {
@@ -102,31 +101,30 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
     }
   };
 
-  // PARSER DO SIS-SEDUR + CONSULTA AUTOMÁTICA À BRASILAPI
+  // PARSER ROBUSTO: LÊ SIS-SEDUR, PREENCHE NATUREZA E DISPARA BRASILAPI
   const handleProcessarTextoColado = async () => {
     if (!textoCopiadoSisSedur.trim()) return;
 
     setProcessandoImportacao(true);
-    setFeedbackImportacao('Lendo dados do SIS-SEDUR e consultando CNPJ na Receita Federal...');
+    setFeedbackImportacao('Lendo dados do processo e buscando CNPJ na Receita Federal...');
 
     try {
       const parsed = parseTextoDoSisSedur(textoCopiadoSisSedur);
       let dadosBrasilApi: any = null;
 
-      // Se detectou CNPJ, consulta automaticamente na BrasilAPI
+      // Se identificou CNPJ, faz a chamada direta e imediata na BrasilAPI
       if (parsed.cnpj) {
         const cnpjLimpo = parsed.cnpj.replace(/\D/g, '');
         if (cnpjLimpo.length === 14) {
           try {
             dadosBrasilApi = await consultarCnpjBrasilApi(cnpjLimpo);
           } catch (apiErr) {
-            console.warn('BrasilAPI não respondeu para o CNPJ extraído:', apiErr);
+            console.warn('BrasilAPI não retornou dados para:', cnpjLimpo, apiErr);
           }
         }
       }
 
       setFormData(prev => {
-        // Une documentos encontrados com os que já estavam marcados
         const docsUnificados = Array.from(
           new Set([...prev.documentos_conferidos, ...parsed.documentos_identificados])
         );
@@ -138,7 +136,6 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         let cnaePrinc = prev.cnae_principal;
         let cnaesSec = prev.cnaes_secundarios;
 
-        // Se a BrasilAPI retornou dados, prioriza dados oficiais da Receita
         if (dadosBrasilApi) {
           interessadoFinal = dadosBrasilApi.razao_social || dadosBrasilApi.nome_fantasia || interessadoFinal;
           bairroFinal = dadosBrasilApi.bairro || bairroFinal;
@@ -168,6 +165,9 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
 
         return {
           ...prev,
+          tipoSolicitacao: parsed.tipoSolicitacao || prev.tipoSolicitacao,
+          modalidade: parsed.modalidade || (parsed.tipoSolicitacao === 'RENOVACAO' ? 'RENOVACAO_LAS' : prev.modalidade),
+          numeroLicencaAnterior: parsed.numeroLicencaAnterior || prev.numeroLicencaAnterior,
           numero_processo: parsed.numero_processo || prev.numero_processo,
           cnpj: parsed.cnpj || prev.cnpj,
           interessado: interessadoFinal,
@@ -183,14 +183,19 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
         };
       });
 
-      const detalhes = [];
-      if (parsed.cnpj) detalhes.push(`CNPJ: ${parsed.cnpj}`);
-      if (dadosBrasilApi) detalhes.push(`Razão Social: ${dadosBrasilApi.razao_social}`);
+      const itensIdentificados: string[] = [];
+      if (parsed.tipoSolicitacao === 'RENOVACAO') itensIdentificados.push('Renovação de LAS identificada');
+      if (parsed.cnpj) itensIdentificados.push(`CNPJ ${parsed.cnpj}`);
+      if (dadosBrasilApi) itensIdentificados.push(`Razão Social: ${dadosBrasilApi.razao_social}`);
       if (parsed.documentos_identificados.length > 0) {
-        detalhes.push(`${parsed.documentos_identificados.length} documento(s) marcados`);
+        itensIdentificados.push(`${parsed.documentos_identificados.length} doc(s) marcados`);
       }
 
-      setFeedbackImportacao(`Sucesso! ${detalhes.join(' | ')}`);
+      setFeedbackImportacao(
+        itensIdentificados.length > 0
+          ? `Identificado: ${itensIdentificados.join(' | ')}`
+          : 'Processamento concluído. Verifique os campos populados.'
+      );
 
       setTimeout(() => {
         setModalImportar(false);
@@ -199,7 +204,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
       }, 2000);
 
     } catch (err: any) {
-      setFeedbackImportacao(`Aviso: ${err.message || 'Erro ao processar'}`);
+      setFeedbackImportacao(`Aviso: ${err.message || 'Erro no processamento'}`);
     } finally {
       setProcessandoImportacao(false);
     }
@@ -207,7 +212,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho com o Botão de Importação */}
+      {/* Cabeçalho */}
       <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -215,7 +220,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
             Etapa 1: Identificação do Processo e Localização
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Preencha os dados cadastrais ou utilize a colagem rápida do SIS-SEDUR.
+            Preencha os dados do processo ou importe direto da tela do SIS-SEDUR.
           </p>
         </div>
 
@@ -456,12 +461,12 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
 
             <div className="p-5 space-y-4">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Copie o texto da tela do processo ou da tabela de documentos anexados no SIS-SEDUR e cole no campo abaixo. O sistema extrairá o processo, o CNPJ (consultando automaticamente a Receita Federal), a área e marcará os documentos no checklist.
+                Copie os dados da tela do processo no SIS-SEDUR (cabeçalho, interessado, CNPJ e a lista de documentos anexados) e cole abaixo. O sistema identificará a natureza da demanda, o CNPJ, consultará a Receita Federal e marcará os documentos.
               </p>
 
               <textarea
-                rows={9}
-                placeholder="Cole aqui o conteúdo copiado do SIS-SEDUR (com ou sem cabeçalho)...&#10;&#10;Exemplo:&#10;Processo: 01452.22.09.001.2026&#10;CNPJ: 12.345.678/0001-90 (ou 12345678000190)&#10;Requerente: BAHIA LOGISTICA LTDA&#10;Bairro: Polo Petroquimico&#10;Área Construída: 1250 m2&#10;Arquivos anexados:&#10;- Requerimento_Padrao.pdf&#10;- Cartao_CNPJ.pdf&#10;- Contrato_Social.pdf&#10;- Contrato_Locacao.pdf&#10;- AVCB_Bombeiros.pdf"
+                rows={10}
+                placeholder="Cole o texto copiado do SIS-SEDUR aqui..."
                 value={textoCopiadoSisSedur}
                 onChange={e => setTextoCopiadoSisSedur(e.target.value)}
                 className="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 bg-white focus:ring-2 focus:ring-emerald-600"
@@ -474,7 +479,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
                   ) : (
                     <Check className="w-4 h-4 text-emerald-600" />
                   )}
-                  {feedbackImportacao}
+                  <span>{feedbackImportacao}</span>
                 </div>
               )}
             </div>
@@ -497,7 +502,7 @@ export const Step1Identificacao: React.FC<Step1Props> = ({ formData, setFormData
                 {processandoImportacao ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Consultando Receita e Processando...
+                    Buscando na Receita Federal...
                   </>
                 ) : (
                   <>
