@@ -2,7 +2,11 @@
 import React, { useMemo } from 'react';
 import { FileCheck, CheckSquare, Square, CheckCheck, RotateCcw, Sparkles } from 'lucide-react';
 import { ProcessoFormData } from '../types';
-import { DOCUMENTOS_BASE_CAMACARI, DocumentoBaseItem } from '../data/normativasCamacari';
+import { 
+  DOCUMENTOS_BASE_CAMACARI, 
+  DocumentoBaseItem,
+  verificarDocumentoObrigatorioSedur 
+} from '../data/normativasCamacari';
 
 interface Step3Props {
   formData: ProcessoFormData;
@@ -11,39 +15,24 @@ interface Step3Props {
 
 export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData }) => {
   const tipologia = formData.tipologia_atividade || 'GERAL';
-  const isRenovacao = formData.modalidade === 'RENOVACAO_LAS';
-  const isInexigibilidade = formData.modalidade === 'INEXIGIBILIDADE';
+  const modalidade = formData.modalidade;
+  const isRenovacao = modalidade === 'RENOVACAO_LAS';
+  const isInexigibilidade = modalidade === 'INEXIGIBILIDADE';
 
-  // Filtra os documentos que se aplicam à tipologia e modalidade atual
+  // Filtra os documentos que se aplicam ao ato e à tipologia
   const docsAplicaveis = useMemo(() => {
     return DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
-      // Documentos exclusivos de renovação
       if (doc.somenteRenovacao && !isRenovacao) return false;
-
-      // Inexigibilidade dispensa certos termos
-      if (isInexigibilidade && doc.excluirEmInexigibilidade) return false;
-
-      // Documentos restritos a certas tipologias (ex: tanques de posto, DNPM de mineração)
-      if (doc.somenteTipologias && !doc.somenteTipologias.includes(tipologia)) {
-        return false;
-      }
-
+      if (isInexigibilidade && doc.dispensadoEmInexigibilidade) return false;
+      if (doc.somenteTipologias && !doc.somenteTipologias.includes(tipologia)) return false;
       return true;
     });
-  }, [tipologia, isRenovacao, isInexigibilidade]);
+  }, [tipologia, modalidade, isRenovacao, isInexigibilidade]);
 
-  // Determina se o documento é estritamente obrigatório para a tipologia atual
-  const ehObrigatorio = (doc: DocumentoBaseItem): boolean => {
-    if (doc.somenteRenovacao) return true;
-    if (doc.tipologiasObrigatorias && doc.tipologiasObrigatorias.includes(tipologia)) {
-      return true;
-    }
-    return doc.obrigatorioBase;
-  };
-
+  // Documentos obrigatórios (Coluna C = "x" na planilha da SEDUR)
   const docsObrigatorios = useMemo(() => {
-    return docsAplicaveis.filter(d => ehObrigatorio(d));
-  }, [docsAplicaveis, tipologia]);
+    return docsAplicaveis.filter(d => verificarDocumentoObrigatorioSedur(d, modalidade, tipologia));
+  }, [docsAplicaveis, modalidade, tipologia]);
 
   const obrigatoriosConferidos = useMemo(() => {
     return docsObrigatorios.filter(d => formData.documentos_conferidos.includes(d.id));
@@ -83,16 +72,17 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
           <FileCheck className="w-6 h-6 text-slate-700" />
-          Etapa 3: Checklist Documental SEDUR Camaçari
+          Etapa 3: Checklist Documental SEDUR Camaçari (CLA)
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Relação customizada para <strong>{
-            tipologia === 'POSTO_COMBUSTIVEL' ? 'Posto de Combustíveis' :
-            tipologia === 'MINERACAO' ? 'Mineração' :
-            tipologia === 'URBANISTICO' ? 'Empreendimentos Urbanísticos' :
-            tipologia === 'OBRA' ? 'Obras / Construção Civil' :
-            tipologia === 'ERB' ? 'Estação Rádio Base (ERB)' : 'Geral'
-          }</strong> conforme normas da CLA/SEDUR.
+          Relação oficial de documentos para <strong>{
+            modalidade === 'INEXIGIBILIDADE' ? 'Inexigibilidade de Licenciamento' :
+            tipologia === 'POSTO_COMBUSTIVEL' ? 'Posto de Combustíveis (LAS)' :
+            tipologia === 'MINERACAO' ? 'Mineração (LAS)' :
+            tipologia === 'URBANISTICO' ? 'Empreendimentos Urbanísticos (LAS)' :
+            tipologia === 'OBRA' ? 'Obras / Construção Civil (LAS)' :
+            tipologia === 'ERB' ? 'Estação Rádio Base (ERB)' : 'Licenciamento Geral'
+          }</strong>. Os itens obrigatórios seguem a coluna C ("x") das planilhas da SEDUR.
         </p>
       </div>
 
@@ -116,7 +106,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
           >
             {instrucaoCompleta
               ? 'Processo plenamente instruído'
-              : `Faltam ${docsObrigatorios.length - obrigatoriosConferidos.length} documento(s) obrigatório(s)`}
+              : `Faltam ${docsObrigatorios.length - obrigatoriosConferidos.length} documento(s) com "x" na SEDUR`}
           </span>
         </div>
 
@@ -137,7 +127,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
           >
             <CheckCheck className="w-4 h-4 text-emerald-400" />
-            Marcar Documentos Obrigatórios Apresentados
+            Marcar Todos os Obrigatórios da SEDUR (Coluna C)
           </button>
 
           <button
@@ -155,7 +145,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {docsAplicaveis.map((doc: DocumentoBaseItem) => {
           const checked = formData.documentos_conferidos.includes(doc.id);
-          const obrigatorio = ehObrigatorio(doc);
+          const obrigatorio = verificarDocumentoObrigatorioSedur(doc, modalidade, tipologia);
 
           return (
             <div
@@ -171,15 +161,15 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
                 {checked ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5 text-slate-400" />}
               </button>
               <div className="text-xs leading-relaxed">
-                <span className="font-bold mr-1.5 text-slate-800">#{doc.id}</span>
-                <span>{doc.nome}</span>
+                <span className="font-bold mr-1 text-slate-800">Item {doc.itemSedur}</span>
+                <span> - {doc.nome}</span>
                 {obrigatorio ? (
                   <span className="ml-2 text-[10px] uppercase font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
-                    Obrigatório
+                    Obrigatório (x)
                   </span>
                 ) : (
                   <span className="ml-2 text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                    Condicional
+                    Se couber
                   </span>
                 )}
                 {doc.somenteTipologias && (
