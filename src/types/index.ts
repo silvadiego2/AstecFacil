@@ -5,6 +5,14 @@ export type StatusParecer = 'DEFERIMENTO' | 'INDEFERIMENTO' | 'DILIGENCIA';
 export type TipoSolicitacao = 'NOVA_LICENCA' | 'RENOVACAO';
 export type DestinatarioParecer = 'CLA' | 'CLU' | 'GABINETE';
 
+export type TipologiaAtividade = 
+  | 'GERAL'
+  | 'POSTO_COMBUSTIVEL'
+  | 'MINERACAO'
+  | 'URBANISTICO'
+  | 'OBRA'
+  | 'ERB';
+
 export interface CnaeItem {
   codigo: number | string;
   descricao: string;
@@ -41,6 +49,7 @@ export interface ProcessoFormData {
   tipoSolicitacao: TipoSolicitacao;
   numeroLicencaAnterior?: string;
   modalidade: ModalidadeLicenca;
+  tipologia_atividade: TipologiaAtividade;
   destinatario_parecer: DestinatarioParecer;
   cnae_principal: CnaeItem;
   cnaes_secundarios: CnaeItem[];
