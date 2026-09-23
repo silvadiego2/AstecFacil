@@ -10,6 +10,7 @@ export interface DocumentoBaseItem {
   id: number;
   nome: string;
   obrigatorioBase: boolean;
+  obrigatorio?: boolean; // Compatibilidade retroativa
   somenteRenovacao?: boolean;
   tipologiasObrigatorias?: TipologiaAtividade[];
   somenteTipologias?: TipologiaAtividade[];
@@ -32,9 +33,7 @@ export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
   { valor: 'ZPA', label: 'ZPA - Zona de Proteção Ambiental' },
 ];
 
-// MATRIZ COMPLETA ALINHADA COM AS PLANILHAS DA SEDUR/CLA
 export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
-  // --- DOCUMENTOS GERAIS E COMUNS (Itens 1.0 a 11.0 das planilhas) ---
   { id: 1, nome: 'Documento de identificação do requerente: RG (PF) ou Contrato Social e RG dos sócios (PJ)', obrigatorioBase: true },
   { id: 2, nome: 'Cópia do Cartão CNPJ ativo e Inscrição Estadual (PJ)', obrigatorioBase: true },
   { id: 3, nome: 'Procuração do requerente com poderes específicos (se processo formalizado por terceiro)', obrigatorioBase: false },
@@ -49,7 +48,7 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
   { id: 12, nome: 'Comprovantes de quitação bancária dos DAMs municipais (Abertura e Taxa de Licenciamento)', obrigatorioBase: true },
   { id: 13, nome: 'Certificado de Licença do Corpo de Bombeiros Militar (AVCB ou CLCB vigente)', obrigatorioBase: true },
 
-  // --- ESTUDOS AMBIENTAIS ESPECÍFICOS PARA LAS (Classes 1 e 2 - LC 1.876/2023) ---
+  // Estudos Ambientais Específicos para LAS (Classes 1 e 2)
   { 
     id: 14, 
     nome: 'Estudo Ambiental para Atividades de Pequeno Impacto (EPI), conforme Termo de Referência da SEDUR', 
@@ -59,11 +58,11 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
   { 
     id: 15, 
     nome: 'Mapa de Restrições Ambientais / Projeto Básico georreferenciado (SIRGAS 2000) com quadro de áreas e APPs', 
-    obrigatorioBase: false,
+    obrigatorioBase: false, 
     tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'MINERACAO', 'URBANISTICO', 'OBRA', 'ERB'] 
   },
 
-  // --- ESPECÍFICOS: POSTO DE COMBUSTÍVEIS ---
+  // Específicos: Posto de Combustíveis
   { 
     id: 16, 
     nome: 'Projeto Básico de equipamentos, sistemas de monitoramento, detecção de vazamentos e tanques de combustíveis (SASC) conforme Normas ABNT', 
@@ -79,7 +78,7 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
     tipologiasObrigatorias: ['POSTO_COMBUSTIVEL'] 
   },
 
-  // --- ESPECÍFICOS: MINERAÇÃO ---
+  // Específicos: Mineração
   { 
     id: 18, 
     nome: 'Certidão sobre a situação do processo no Departamento Nacional de Produção Mineral (DNPM / ANM)', 
@@ -116,7 +115,7 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
     tipologiasObrigatorias: ['MINERACAO'] 
   },
 
-  // --- ESPECÍFICOS: URBANÍSTICO E OBRAS ---
+  // Específicos: Urbanístico e Obras
   { 
     id: 23, 
     nome: 'Carta de viabilidade de serviços públicos de saneamento básico (EMBASA), energia (COELBA) e coleta de lixo (Prefeitura)', 
@@ -139,7 +138,7 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
     tipologiasObrigatorias: ['URBANISTICO', 'OBRA'] 
   },
 
-  // --- ESPECÍFICOS: ESTAÇÃO RÁDIO BASE (ERB) ---
+  // Específicos: Estação Rádio Base (ERB)
   { 
     id: 26, 
     nome: 'Laudo Radiométrico Teórico com estimativa dos níveis máximos de densidade de potência e lóbulo principal (raio mín. 30m)', 
@@ -148,7 +147,7 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
     tipologiasObrigatorias: ['ERB'] 
   },
 
-  // --- PROGRAMAS AMBIENTAIS E RESÍDUOS ---
+  // Programas Ambientais e Resíduos
   { 
     id: 27, 
     nome: 'Plano de Gerenciamento de Resíduos Sólidos (PGRS) e/ou da Construção Civil (PGRSCC)', 
@@ -162,7 +161,7 @@ export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
     tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'MINERACAO', 'URBANISTICO', 'OBRA'] 
   },
 
-  // --- DOCUMENTOS ESPECÍFICOS DE RENOVAÇÃO ---
+  // Específicos de Renovação
   { 
     id: 29, 
     nome: 'Cópia da Portaria / Certificado da Licença Ambiental Simplificada (LAS) anterior a renovar', 
@@ -185,9 +184,15 @@ export const FUNDAMENTACAO_LEGAL = {
   cepram: 'Resoluções CEPRAM nº 4.327/2013, nº 4.578/2017 e nº 4.579/2018'
 };
 
-// ============================================================================
-// DETECÇÃO AUTOMÁTICA DA TIPOLOGIA POR CNAE (PRINCIPAL E SECUNDÁRIOS)
-// ============================================================================
+// Helper universal de obrigatoriedade
+export function verificarDocumentoObrigatorio(doc: DocumentoBaseItem, tipologia: TipologiaAtividade = 'GERAL'): boolean {
+  if (doc.somenteRenovacao) return true;
+  if (doc.tipologiasObrigatorias && doc.tipologiasObrigatorias.includes(tipologia)) {
+    return true;
+  }
+  return doc.obrigatorioBase ?? doc.obrigatorio ?? false;
+}
+
 export function detectarTipologiaPorCnaes(cnaes: CnaeItem[]): TipologiaAtividade {
   if (!cnaes || cnaes.length === 0) return 'GERAL';
 
@@ -198,7 +203,6 @@ export function detectarTipologiaPorCnaes(cnaes: CnaeItem[]): TipologiaAtividade
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  // 1. Posto de Combustíveis e Derivados
   if (
     textoCompleto.includes('4731') || 
     textoCompleto.includes('4732') || 
@@ -211,7 +215,6 @@ export function detectarTipologiaPorCnaes(cnaes: CnaeItem[]): TipologiaAtividade
     return 'POSTO_COMBUSTIVEL';
   }
 
-  // 2. Mineração e Extração
   if (
     textoCompleto.includes('0810') || 
     textoCompleto.includes('0891') || 
@@ -230,7 +233,6 @@ export function detectarTipologiaPorCnaes(cnaes: CnaeItem[]): TipologiaAtividade
     return 'MINERACAO';
   }
 
-  // 3. Estações Rádio Base (ERB / Telecomunicações)
   if (
     textoCompleto.includes('6110') || 
     textoCompleto.includes('6120') || 
@@ -244,9 +246,8 @@ export function detectarTipologiaPorCnaes(cnaes: CnaeItem[]): TipologiaAtividade
     return 'ERB';
   }
 
-  // 4. Urbanístico / Loteamento / Parcelamento do Solo
   if (
-    textoCompleto.includes('6810') && (textoCompleto.includes('loteamento') || textoCompleto.includes('imoveis proprios')) ||
+    (textoCompleto.includes('6810') && (textoCompleto.includes('loteamento') || textoCompleto.includes('imoveis proprios'))) ||
     textoCompleto.includes('4110') ||
     textoCompleto.includes('loteamento') || 
     textoCompleto.includes('parcelamento do solo') || 
@@ -256,7 +257,6 @@ export function detectarTipologiaPorCnaes(cnaes: CnaeItem[]): TipologiaAtividade
     return 'URBANISTICO';
   }
 
-  // 5. Obras e Construção Civil
   if (
     textoCompleto.includes('4120') || 
     textoCompleto.includes('4211') || 
