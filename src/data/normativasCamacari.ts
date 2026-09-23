@@ -1,5 +1,5 @@
 // src/data/normativasCamacari.ts
-import { TipoSolicitacao, ModalidadeLicenca } from '../types';
+import { TipoSolicitacao, ModalidadeLicenca, TipologiaAtividade, CnaeItem } from '../types';
 
 export interface ZoneamentoItem {
   valor: string;
@@ -9,8 +9,11 @@ export interface ZoneamentoItem {
 export interface DocumentoBaseItem {
   id: number;
   nome: string;
-  obrigatorio: boolean;
+  obrigatorioBase: boolean;
   somenteRenovacao?: boolean;
+  tipologiasObrigatorias?: TipologiaAtividade[];
+  somenteTipologias?: TipologiaAtividade[];
+  excluirEmInexigibilidade?: boolean;
 }
 
 export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
@@ -20,7 +23,7 @@ export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
   { valor: 'ZDC 2', label: 'ZDC 2 - Zona de Desenvolvimento e Comércio 2' },
   { valor: 'ZDC 3', label: 'ZDC 3 - Zona de Desenvolvimento e Comércio 3 (Corredores Rodoviários)' },
   { valor: 'ZDC 4', label: 'ZDC 4 - Zona de Desenvolvimento e Comércio 4' },
-  { valor: 'ZDC 5', label: 'ZDC 5 - Zona de Desenvolvimento e Comércio 5' },
+  { valor: 'ZDC 5', label: 'ZDC 5 - Zona de Desenvolvimento da Costa – ZDC 5' },
   { valor: 'ZPIC', label: 'ZPIC - Zona de Polo Industrial de Camaçari' },
   { valor: 'ZEIS', label: 'ZEIS - Zona Especial de Interesse Social' },
   { valor: 'ZTR', label: 'ZTR - Zona Turística e Residencial (Litoral / Orla)' },
@@ -29,39 +32,249 @@ export const ZONEAMENTOS_CAMACARI: ZoneamentoItem[] = [
   { valor: 'ZPA', label: 'ZPA - Zona de Proteção Ambiental' },
 ];
 
+// MATRIZ COMPLETA ALINHADA COM AS PLANILHAS DA SEDUR/CLA
 export const DOCUMENTOS_BASE_CAMACARI: DocumentoBaseItem[] = [
-  { id: 1, nome: 'Requerimento padrão assinado pelo responsável legal ou procurador constituído', obrigatorio: true },
-  { id: 2, nome: 'Comprovante de Inscrição e Situação Cadastral do CNPJ (ativo)', obrigatorio: true },
-  { id: 3, nome: 'Contrato Social consolidado ou última alteração contratual registrada na JUCEB', obrigatorio: true },
-  { id: 4, nome: 'Documento oficial de identificação dos sócios/administradores (RG/CPF ou CNH-e)', obrigatorio: true },
-  { id: 5, nome: 'Comprovação de Posse/Uso do Imóvel: Contrato de Locação vigente com firmas OU Escritura/Certidão de Inteiro Teor do RGI (se proprietário)', obrigatorio: true },
-  { id: 6, nome: 'Certidão Negativa de Débitos Municipais e Imobiliários / IPTU (SEFAZ Camaçari)', obrigatorio: true },
-  { id: 7, nome: 'Consulta Prévia de Viabilidade Urbanística Deferida pela SEDUR/REDESIM (ou Alvará anterior se em atividade)', obrigatorio: true },
-  { id: 8, nome: 'Relatório de Caracterização do Empreendimento (RCE) detalhado e assinado', obrigatorio: true },
-  { id: 9, nome: 'Arquivo georreferenciado em formato KML/KMZ (SIRGAS 2000) e Croqui de Acesso', obrigatorio: true },
-  { id: 10, nome: 'Certificado de Licença do Corpo de Bombeiros Militar (CLCB ou AVCB vigente)', obrigatorio: true },
-  { id: 11, nome: 'Comprovantes de quitação bancária dos DAMs (Abertura de Processo e Taxa de Licenciamento)', obrigatorio: true },
-  { id: 12, nome: 'Comprovante de abastecimento de água e esgotamento sanitário (EMBASA) ou solução própria (fossa/outorga)', obrigatorio: false },
-  { id: 13, nome: 'Comprovante de energia elétrica (Neoenergia Coelba) — do imóvel, condomínio ou locador', obrigatorio: false },
-  { id: 14, nome: 'Alvará Sanitário emitido pela Vigilância Sanitária Municipal (SESAU/VISA), se aplicável', obrigatorio: false },
-  { id: 15, nome: 'Parecer Técnico ou Relatório de Vistoria da DIRAM/CLA (quando realizado pelo órgão)', obrigatorio: false },
-  { id: 16, nome: 'Cópia da Portaria / Certificado da Licença Ambiental Simplificada (LAS) anterior a renovar', obrigatorio: true, somenteRenovacao: true },
-  { id: 17, nome: 'Relatório Técnico Fotográfico de Cumprimento das Condicionantes da LAS anterior (MTR, laudos, notas)', obrigatorio: true, somenteRenovacao: true },
-];
+  // --- DOCUMENTOS GERAIS E COMUNS (Itens 1.0 a 11.0 das planilhas) ---
+  { id: 1, nome: 'Documento de identificação do requerente: RG (PF) ou Contrato Social e RG dos sócios (PJ)', obrigatorioBase: true },
+  { id: 2, nome: 'Cópia do Cartão CNPJ ativo e Inscrição Estadual (PJ)', obrigatorioBase: true },
+  { id: 3, nome: 'Procuração do requerente com poderes específicos (se processo formalizado por terceiro)', obrigatorioBase: false },
+  { id: 4, nome: 'Certidão de matrícula e ônus reais do Cartório de Registro de Imóveis (RGI) OU Contrato de Locação/Posse legítima', obrigatorioBase: true },
+  { id: 5, nome: 'Certidão Negativa de Débitos Municipais e Imobiliários / IPTU (SEFAZ Camaçari)', obrigatorioBase: true },
+  { id: 6, nome: 'Consulta Prévia de Viabilidade emitida pela SEDUR (ou Alvará de Localização)', obrigatorioBase: true },
+  { id: 7, nome: 'Requerimento de Licenciamento Ambiental assinado (disponível no SIS-SEDUR)', obrigatorioBase: true },
+  { id: 8, nome: 'Relatório de Caracterização do Empreendimento - RCE (Modelo SEDUR assinado)', obrigatorioBase: true },
+  { id: 9, nome: 'Termo de Responsabilidade Ambiental - TRA (Modelo SEDUR)', obrigatorioBase: true, excluirEmInexigibilidade: true },
+  { id: 10, nome: 'Planta georreferenciada de localização do empreendimento (vias de acesso, corpos hídricos, meio digital)', obrigatorioBase: true },
+  { id: 11, nome: 'Projeto Básico do empreendimento (Planta de Situação georreferenciada SIRGAS 2000)', obrigatorioBase: true },
+  { id: 12, nome: 'Comprovantes de quitação bancária dos DAMs municipais (Abertura e Taxa de Licenciamento)', obrigatorioBase: true },
+  { id: 13, nome: 'Certificado de Licença do Corpo de Bombeiros Militar (AVCB ou CLCB vigente)', obrigatorioBase: true },
 
-export const PALAVRAS_CHAVE_INDUSTRIA: string[] = [
-  'fabricacao', 'fabricação', 'producao', 'produção', 'usinagem', 'tintas',
-  'corte termico', 'corte térmico', 'alimentos', 'metalurgica', 'metalúrgica',
-  'quimica', 'química', 'plastico', 'plástico', 'torno', 'solda', 'revestimento'
+  // --- ESTUDOS AMBIENTAIS ESPECÍFICOS PARA LAS (Classes 1 e 2 - LC 1.876/2023) ---
+  { 
+    id: 14, 
+    nome: 'Estudo Ambiental para Atividades de Pequeno Impacto (EPI), conforme Termo de Referência da SEDUR', 
+    obrigatorioBase: false, 
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'MINERACAO', 'URBANISTICO', 'OBRA', 'ERB'] 
+  },
+  { 
+    id: 15, 
+    nome: 'Mapa de Restrições Ambientais / Projeto Básico georreferenciado (SIRGAS 2000) com quadro de áreas e APPs', 
+    obrigatorioBase: false,
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'MINERACAO', 'URBANISTICO', 'OBRA', 'ERB'] 
+  },
+
+  // --- ESPECÍFICOS: POSTO DE COMBUSTÍVEIS ---
+  { 
+    id: 16, 
+    nome: 'Projeto Básico de equipamentos, sistemas de monitoramento, detecção de vazamentos e tanques de combustíveis (SASC) conforme Normas ABNT', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['POSTO_COMBUSTIVEL'], 
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL'] 
+  },
+  { 
+    id: 17, 
+    nome: 'Plantas do sistema de coleta e tratamento de efluentes líquidos com Caixa Separadora de Água e Óleo (CSAO) e drenagem pluvial', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['POSTO_COMBUSTIVEL'], 
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL'] 
+  },
+
+  // --- ESPECÍFICOS: MINERAÇÃO ---
+  { 
+    id: 18, 
+    nome: 'Certidão sobre a situação do processo no Departamento Nacional de Produção Mineral (DNPM / ANM)', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['MINERACAO'], 
+    tipologiasObrigatorias: ['MINERACAO'] 
+  },
+  { 
+    id: 19, 
+    nome: 'Alvará de Pesquisa do DNPM/ANM com relatório de pesquisa, Guia de Utilização de minério ou Portaria de Lavra', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['MINERACAO'], 
+    tipologiasObrigatorias: ['MINERACAO'] 
+  },
+  { 
+    id: 20, 
+    nome: 'Levantamento topográfico planialtimétrico cadastral georreferenciado (SIRGAS 2000, curvas de nível de 1m)', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['MINERACAO'], 
+    tipologiasObrigatorias: ['MINERACAO'] 
+  },
+  { 
+    id: 21, 
+    nome: 'Documento comprobatório de posse/propriedade ou autorização expressa do superficiário com firma reconhecida', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['MINERACAO'], 
+    tipologiasObrigatorias: ['MINERACAO'] 
+  },
+  { 
+    id: 22, 
+    nome: 'Programa de Gerenciamento de Risco (PGR - Norma Técnica Resolução CEPRAM nº 4.578/2017) com ART', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['MINERACAO'], 
+    tipologiasObrigatorias: ['MINERACAO'] 
+  },
+
+  // --- ESPECÍFICOS: URBANÍSTICO E OBRAS ---
+  { 
+    id: 23, 
+    nome: 'Carta de viabilidade de serviços públicos de saneamento básico (EMBASA), energia (COELBA) e coleta de lixo (Prefeitura)', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['POSTO_COMBUSTIVEL', 'URBANISTICO', 'OBRA'], 
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'URBANISTICO', 'OBRA'] 
+  },
+  { 
+    id: 24, 
+    nome: 'Projetos de abastecimento de água e esgotamento sanitário com memorial de cálculo aprovados pela EMBASA', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['POSTO_COMBUSTIVEL', 'URBANISTICO', 'OBRA'], 
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'URBANISTICO', 'OBRA'] 
+  },
+  { 
+    id: 25, 
+    nome: 'Projeto de drenagem de águas pluviais do empreendimento acompanhado da respectiva ART', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['URBANISTICO', 'OBRA'], 
+    tipologiasObrigatorias: ['URBANISTICO', 'OBRA'] 
+  },
+
+  // --- ESPECÍFICOS: ESTAÇÃO RÁDIO BASE (ERB) ---
+  { 
+    id: 26, 
+    nome: 'Laudo Radiométrico Teórico com estimativa dos níveis máximos de densidade de potência e lóbulo principal (raio mín. 30m)', 
+    obrigatorioBase: false, 
+    somenteTipologias: ['ERB'], 
+    tipologiasObrigatorias: ['ERB'] 
+  },
+
+  // --- PROGRAMAS AMBIENTAIS E RESÍDUOS ---
+  { 
+    id: 27, 
+    nome: 'Plano de Gerenciamento de Resíduos Sólidos (PGRS) e/ou da Construção Civil (PGRSCC)', 
+    obrigatorioBase: false, 
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'MINERACAO', 'URBANISTICO', 'OBRA', 'ERB'] 
+  },
+  { 
+    id: 28, 
+    nome: 'Relatório de Detalhamento dos Programas Ambientais e/ou Programa de Educação Ambiental', 
+    obrigatorioBase: false, 
+    tipologiasObrigatorias: ['POSTO_COMBUSTIVEL', 'MINERACAO', 'URBANISTICO', 'OBRA'] 
+  },
+
+  // --- DOCUMENTOS ESPECÍFICOS DE RENOVAÇÃO ---
+  { 
+    id: 29, 
+    nome: 'Cópia da Portaria / Certificado da Licença Ambiental Simplificada (LAS) anterior a renovar', 
+    obrigatorioBase: true, 
+    somenteRenovacao: true 
+  },
+  { 
+    id: 30, 
+    nome: 'Relatório Técnico Fotográfico de Cumprimento das Condicionantes da LAS anterior (MTR, laudos e notas)', 
+    obrigatorioBase: true, 
+    somenteRenovacao: true 
+  },
 ];
 
 export const FUNDAMENTACAO_LEGAL = {
-  codigoMeioAmbiente: 'Lei Complementar Municipal nº 1.876/2023 (Código de Meio Ambiente de Camaçari, Anexo IV e Art. 14)',
+  codigoMeioAmbiente: 'Lei Complementar Municipal nº 1.876/2023 (Código de Meio Ambiente de Camaçari, Art. 53, § 2º e Anexo IV)',
   pddu: 'Lei Complementar Municipal nº 1.873/2023 (PDDU Camaçari)',
   codigoUrbanistico: 'Lei Complementar Municipal nº 1.874/2023 (Código Urbanístico de Camaçari)',
   decretoEstadual: 'Decreto Estadual da Bahia nº 14.024/2012',
-  cepram: 'Resoluções CEPRAM nº 4.327/2013 e nº 4.579/2018'
+  cepram: 'Resoluções CEPRAM nº 4.327/2013, nº 4.578/2017 e nº 4.579/2018'
 };
+
+// ============================================================================
+// DETECÇÃO AUTOMÁTICA DA TIPOLOGIA POR CNAE (PRINCIPAL E SECUNDÁRIOS)
+// ============================================================================
+export function detectarTipologiaPorCnaes(cnaes: CnaeItem[]): TipologiaAtividade {
+  if (!cnaes || cnaes.length === 0) return 'GERAL';
+
+  const textoCompleto = cnaes
+    .map(c => `${c.codigo} ${c.descricao}`)
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  // 1. Posto de Combustíveis e Derivados
+  if (
+    textoCompleto.includes('4731') || 
+    textoCompleto.includes('4732') || 
+    textoCompleto.includes('4681') ||
+    textoCompleto.includes('combustivel') || 
+    textoCompleto.includes('combustiveis') ||
+    textoCompleto.includes('posto de gasolina') ||
+    textoCompleto.includes('trr')
+  ) {
+    return 'POSTO_COMBUSTIVEL';
+  }
+
+  // 2. Mineração e Extração
+  if (
+    textoCompleto.includes('0810') || 
+    textoCompleto.includes('0891') || 
+    textoCompleto.includes('0892') ||
+    textoCompleto.includes('0899') ||
+    textoCompleto.includes('0710') ||
+    textoCompleto.includes('0721') ||
+    textoCompleto.includes('mineracao') || 
+    textoCompleto.includes('extracao') || 
+    textoCompleto.includes('areal') || 
+    textoCompleto.includes('pedreira') ||
+    textoCompleto.includes('brita') ||
+    textoCompleto.includes('saibro') ||
+    textoCompleto.includes('lavra')
+  ) {
+    return 'MINERACAO';
+  }
+
+  // 3. Estações Rádio Base (ERB / Telecomunicações)
+  if (
+    textoCompleto.includes('6110') || 
+    textoCompleto.includes('6120') || 
+    textoCompleto.includes('6130') || 
+    textoCompleto.includes('6190') ||
+    textoCompleto.includes('telefonia movel') || 
+    textoCompleto.includes('estacao radio base') || 
+    textoCompleto.includes('torre de telecomunicacao') ||
+    textoCompleto.includes('antena')
+  ) {
+    return 'ERB';
+  }
+
+  // 4. Urbanístico / Loteamento / Parcelamento do Solo
+  if (
+    textoCompleto.includes('6810') && (textoCompleto.includes('loteamento') || textoCompleto.includes('imoveis proprios')) ||
+    textoCompleto.includes('4110') ||
+    textoCompleto.includes('loteamento') || 
+    textoCompleto.includes('parcelamento do solo') || 
+    textoCompleto.includes('desmembramento') ||
+    textoCompleto.includes('condominio urbanistico')
+  ) {
+    return 'URBANISTICO';
+  }
+
+  // 5. Obras e Construção Civil
+  if (
+    textoCompleto.includes('4120') || 
+    textoCompleto.includes('4211') || 
+    textoCompleto.includes('4212') || 
+    textoCompleto.includes('4213') || 
+    textoCompleto.includes('4221') || 
+    textoCompleto.includes('4299') ||
+    textoCompleto.includes('4311') ||
+    textoCompleto.includes('4313') ||
+    textoCompleto.includes('construcao de edificios') ||
+    textoCompleto.includes('terraplenagem') ||
+    textoCompleto.includes('obras de urbanizacao')
+  ) {
+    return 'OBRA';
+  }
+
+  return 'GERAL';
+}
 
 export function formatarCnpj(valor: string): string {
   const d = valor.replace(/\D/g, '').slice(0, 14);
@@ -75,6 +288,9 @@ export function inferirZoneamentoPorBairro(bairro: string): string {
 
   if (b.includes('polo') || b.includes('petroquimico') || b.includes('industrial') || b.includes('copec')) {
     return 'ZPIC';
+  }
+  if (b.includes('areal') || b.includes('costa') || b.includes('zdc 5') || b.includes('zdc5')) {
+    return 'ZDC 5';
   }
   if (b.includes('guarajuba') || b.includes('itacimirim') || b.includes('arembepe') || b.includes('jacuipe') || b.includes('monte gordo') || b.includes('busca vida') || b.includes('interlagos')) {
     return 'ZTR';
@@ -111,102 +327,132 @@ export function parseTextoDoSisSedur(textoBruto: string): ResultadoParsingSisSed
   if (!textoBruto || textoBruto.trim() === '') return resultado;
 
   const textoLimpo = textoBruto.replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n');
-  const normalizado = textoLimpo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const linhas = textoLimpo.split('\n').map(l => l.trim()).filter(Boolean);
 
-  // 1. Natureza da Demanda
-  if (/renovacao|renovaçao|renovação|\brlas\b/.test(normalizado)) {
-    resultado.tipoSolicitacao = 'RENOVACAO';
-    resultado.modalidade = 'RENOVACAO_LAS';
-  } else if (/dispensa|\bdla\b/.test(normalizado)) {
-    resultado.tipoSolicitacao = 'NOVA_LICENCA';
-    resultado.modalidade = 'DISPENSA';
-  } else if (/inexigibilidade/.test(normalizado)) {
-    resultado.tipoSolicitacao = 'NOVA_LICENCA';
-    resultado.modalidade = 'INEXIGIBILIDADE';
-  } else if (/simplificada|\blas\b/.test(normalizado)) {
-    resultado.tipoSolicitacao = 'NOVA_LICENCA';
-    resultado.modalidade = 'LAS';
-  }
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
+    const linhaNorm = linha.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  // 2. Número do Processo (suporta 3, 4 ou 5 dígitos no 4º bloco: ex: 02611.22.09.1073.2026)
-  const regexProcesso = /(\d{4,6}[./]\d{2}[./]\d{2}[./]\d{3,5}[./]\d{4})/;
-  const matchProcesso = textoLimpo.match(regexProcesso);
-  if (matchProcesso) {
-    resultado.numero_processo = matchProcesso[0].replace(/\//g, '.');
-  }
-
-  // 3. CNPJ - Captura mesmo com quebra de linha após rótulo ou números soltos
-  let cnpjAchado: string | null = null;
-  const matchComMascara = textoLimpo.match(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/);
-  if (matchComMascara) {
-    cnpjAchado = matchComMascara[0];
-  } else {
-    // Busca 14 dígitos após rótulos mesmo que haja quebra de linha
-    const matchAposRotulo = textoLimpo.match(/(?:cnpj|cpf\/cnpj|inscri[cç][aã]o)[\s\S]{0,30}?(\d{2}[\s.]?\d{3}[\s.]?\d{3}[\s./]?\d{4}[\s.-]?\d{2})/i);
-    if (matchAposRotulo) {
-      const digitos = matchAposRotulo[1].replace(/\D/g, '');
+    // CNPJ
+    if (/^cnpj|^cpf\/cnpj|^inscri[cç][aã]o\s+federal/i.test(linhaNorm)) {
+      let valor = linha.replace(/^[^:]*:\s*/, '').trim();
+      if (!valor && i + 1 < linhas.length) {
+        valor = linhas[i + 1].trim();
+      }
+      const digitos = valor.replace(/\D/g, '');
       if (digitos.length === 14) {
-        cnpjAchado = formatarCnpj(digitos);
+        resultado.cnpj = formatarCnpj(digitos);
+      }
+    }
+
+    // INTERESSADO
+    if (/^interessado|^requerente|^razao\s+social/i.test(linhaNorm)) {
+      let valor = linha.replace(/^[^:]*:\s*/, '').trim();
+      if (!valor && i + 1 < linhas.length) {
+        valor = linhas[i + 1].trim();
+      }
+      if (valor) resultado.interessado = valor;
+    }
+
+    // PROCESSO
+    if (/processo/i.test(linhaNorm)) {
+      const trecho = linha + ' ' + (linhas[i + 1] || '');
+      const matchProc = trecho.match(/\d{4,6}[./]\d{2}[./]\d{2}[./]\d{3,5}[./]\d{4}/);
+      if (matchProc) {
+        resultado.numero_processo = matchProc[0].replace(/\//g, '.');
+      }
+    }
+
+    // ENDEREÇO
+    if (/^endereco|^endereço|^localizacao/i.test(linhaNorm)) {
+      let valor = linha.replace(/^[^:]*:\s*/, '').trim();
+      if (!valor && i + 1 < linhas.length) {
+        valor = linhas[i + 1].trim();
+      }
+      if (valor) {
+        resultado.endereco = valor;
+        const partes = valor.split(/,\s*/);
+        if (partes.length >= 3) {
+          const possivelBairro = partes[partes.length - 2].replace(/\s*-\s*ba/i, '').replace(/cama[cç]ari/i, '').trim();
+          if (possivelBairro) {
+            resultado.bairro = possivelBairro;
+            resultado.zona_sugerida = inferirZoneamentoPorBairro(possivelBairro);
+          }
+        }
+      }
+    }
+
+    // ASSUNTO / DEMANDA
+    if (/^assunto|^servico|^serviço/i.test(linhaNorm)) {
+      let valor = linha.replace(/^[^:]*:\s*/, '').trim();
+      if (!valor && i + 1 < linhas.length) {
+        valor = linhas[i + 1].trim();
+      }
+      const valNorm = valor.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (/renovacao|rlas/.test(valNorm)) {
+        resultado.tipoSolicitacao = 'RENOVACAO';
+        resultado.modalidade = 'RENOVACAO_LAS';
+      } else if (/dispensa|dla/.test(valNorm)) {
+        resultado.tipoSolicitacao = 'NOVA_LICENCA';
+        resultado.modalidade = 'DISPENSA';
+      } else if (/inexigibilidade/.test(valNorm)) {
+        resultado.tipoSolicitacao = 'NOVA_LICENCA';
+        resultado.modalidade = 'INEXIGIBILIDADE';
+      } else if (/simplificada|las/.test(valNorm)) {
+        resultado.tipoSolicitacao = 'NOVA_LICENCA';
+        resultado.modalidade = 'LAS';
       }
     }
   }
 
-  if (!cnpjAchado) {
-    const match14 = textoLimpo.match(/\b\d{14}\b/);
-    if (match14) {
-      cnpjAchado = formatarCnpj(match14[0]);
+  // Fallback para CNPJ
+  if (!resultado.cnpj) {
+    const matchCnpjGlobal = textoLimpo.match(/\b\d{2}[\s.]?\d{3}[\s.]?\d{3}[\s./]?\d{4}[\s.-]?\d{2}\b/);
+    if (matchCnpjGlobal) {
+      const digitos = matchCnpjGlobal[0].replace(/\D/g, '');
+      if (digitos.length === 14) resultado.cnpj = formatarCnpj(digitos);
     }
   }
 
-  if (cnpjAchado) {
-    resultado.cnpj = cnpjAchado;
+  // Fallback para Processo
+  if (!resultado.numero_processo) {
+    const matchP = textoLimpo.match(/(\d{4,6}[./]\d{2}[./]\d{2}[./]\d{3,5}[./]\d{4})/);
+    if (matchP) resultado.numero_processo = matchP[0].replace(/\//g, '.');
   }
 
-  // 4. Interessado / Requerente (captura com ou sem quebra de linha após rótulo)
-  const matchInteressado = textoLimpo.match(/(?:interessado|requerente|razao social|razão social)[\s\S]{0,25}?:[\s\n]*([^\n\r,;]+)/i);
-  if (matchInteressado && matchInteressado[1].trim()) {
-    resultado.interessado = matchInteressado[1].trim();
-  }
+  // Leitura de Documentos
+  const normalizado = textoLimpo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const docs = new Set<number>();
+  if (/requerimento|solicitacao|formulario/.test(normalizado)) docs.add(7);
+  if (/cartao cnpj|cartao do cnpj|comprovante cnpj|situacao cadastral/.test(normalizado)) docs.add(2);
+  if (/contrato social|alteracao contratual|estatuto|juceb/.test(normalizado)) docs.add(1);
+  if (/procuracao/.test(normalizado)) docs.add(3);
+  if (/locacao|locaçao|aluguel|escritura|rgi|matricula/.test(normalizado)) docs.add(4);
+  if (/iptu|certidao negativa|debitos municipais|sefaz/.test(normalizado)) docs.add(5);
+  if (/viabilidade|consulta previa|alvara/.test(normalizado)) docs.add(6);
+  if (/rce|caracterizacao do empreendimento/.test(normalizado)) docs.add(8);
+  if (/termo de responsabilidade ambiental|tra/.test(normalizado)) docs.add(9);
+  if (/planta georreferenciada|localizacao/.test(normalizado)) docs.add(10);
+  if (/projeto basico|planta de situacao/.test(normalizado)) docs.add(11);
+  if (/dam|taxa de abertura|taxa de licenciamento|quitacao/.test(normalizado)) docs.add(12);
+  if (/bombeiro|bombeiros|avcb|clcb/.test(normalizado)) docs.add(13);
+  if (/epi|estudo ambiental para atividades de pequeno impacto/.test(normalizado)) docs.add(14);
+  if (/mapa de restricoes ambientais|mapa de restricoes/.test(normalizado)) docs.add(15);
+  if (/sasc|equipamentos e sistemas de monitoramento|tanques/.test(normalizado)) docs.add(16);
+  if (/csao|separadora de agua e oleo|efluentes/.test(normalizado)) docs.add(17);
+  if (/dnpm|anm|processo minerario/.test(normalizado)) { docs.add(18); docs.add(19); }
+  if (/topografico|curvas de nivel/.test(normalizado)) docs.add(20);
+  if (/superficiario/.test(normalizado)) docs.add(21);
+  if (/pgr|gerenciamento de risco/.test(normalizado)) docs.add(22);
+  if (/carta de viabilidade|embasa.*coelba/.test(normalizado)) docs.add(23);
+  if (/aprovados pela embasa|esgotamento sanitario/.test(normalizado)) docs.add(24);
+  if (/drenagem de aguas pluviais|drenagem/.test(normalizado)) docs.add(25);
+  if (/laudo radiometrico|radiometrico/.test(normalizado)) docs.add(26);
+  if (/pgrs|pgrscc/.test(normalizado)) docs.add(27);
+  if (/programas ambientais|educacao ambiental/.test(normalizado)) docs.add(28);
+  if (/licenca anterior|las anterior|portaria/.test(normalizado)) docs.add(29);
+  if (/condicionantes|mtr|sinir/.test(normalizado)) docs.add(30);
 
-  // 5. Endereço e Bairro
-  const matchEndereco = textoLimpo.match(/(?:endereco|endereço|localizacao|localização)[\s\S]{0,20}?:[\s\n]*([^\n\r]+)/i);
-  if (matchEndereco && matchEndereco[1].trim()) {
-    resultado.endereco = matchEndereco[1].trim();
-  }
-
-  const matchBairro = textoLimpo.match(/(?:bairro|distrito)[\s\S]{0,20}?:[\s\n]*([^\n\r,;]+)/i);
-  if (matchBairro && matchBairro[1].trim()) {
-    resultado.bairro = matchBairro[1].trim();
-    resultado.zona_sugerida = inferirZoneamentoPorBairro(resultado.bairro);
-  }
-
-  // 6. Área m²
-  const matchArea = textoLimpo.match(/(?:area|área|area construida|área construída)[\s\S]{0,20}?:[\s\n]*([\d.,]+)/i);
-  if (matchArea) {
-    const parsed = parseFloat(matchArea[1].replace(/\./g, '').replace(',', '.'));
-    if (!isNaN(parsed) && parsed > 0) resultado.area_m2 = parsed;
-  }
-
-  // 7. Documentos Anexados
-  const docsEncontrados = new Set<number>();
-  if (/requerimento|solicitacao|formulario/.test(normalizado)) docsEncontrados.add(1);
-  if (/cartao cnpj|cartao do cnpj|comprovante cnpj|situacao cadastral/.test(normalizado)) docsEncontrados.add(2);
-  if (/contrato social|alteracao contratual|estatuto|juceb/.test(normalizado)) docsEncontrados.add(3);
-  if (/\brg\b|\bcpf\b|\bcnh\b|identificacao|identidade/.test(normalizado)) docsEncontrados.add(4);
-  if (/locacao|locaçao|aluguel|escritura|rgi|matricula/.test(normalizado)) docsEncontrados.add(5);
-  if (/iptu|certidao negativa|debitos municipais|sefaz/.test(normalizado)) docsEncontrados.add(6);
-  if (/viabilidade|consulta previa|alvara/.test(normalizado)) docsEncontrados.add(7);
-  if (/rce|caracterizacao do empreendimento/.test(normalizado)) docsEncontrados.add(8);
-  if (/kml|kmz|croqui|georreferenciamento/.test(normalizado)) docsEncontrados.add(9);
-  if (/bombeiro|bombeiros|avcb|clcb/.test(normalizado)) docsEncontrados.add(10);
-  if (/dam|taxa de abertura|taxa de licenciamento|quitacao/.test(normalizado)) docsEncontrados.add(11);
-  if (/embasa|abastecimento|esgoto/.test(normalizado)) docsEncontrados.add(12);
-  if (/coelba|neoenergia|luz/.test(normalizado)) docsEncontrados.add(13);
-  if (/sanitario|sanitaria|vigilancia|visa/.test(normalizado)) docsEncontrados.add(14);
-  if (/vistoria|fiscalizacao|diram/.test(normalizado)) docsEncontrados.add(15);
-  if (/licenca anterior|las anterior|portaria/.test(normalizado)) docsEncontrados.add(16);
-  if (/condicionantes|mtr|sinir/.test(normalizado)) docsEncontrados.add(17);
-
-  resultado.documentos_identificados = Array.from(docsEncontrados);
+  resultado.documentos_identificados = Array.from(docs);
   return resultado;
 }
