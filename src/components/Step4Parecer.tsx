@@ -13,7 +13,11 @@ import {
   SendHorizontal
 } from 'lucide-react';
 import { ProcessoFormData, StatusParecer, DestinatarioParecer } from '../types';
-import { DOCUMENTOS_BASE_CAMACARI, DocumentoBaseItem } from '../data/normativasCamacari';
+import { 
+  DOCUMENTOS_BASE_CAMACARI, 
+  DocumentoBaseItem,
+  verificarDocumentoObrigatorio 
+} from '../data/normativasCamacari';
 import { salvarProcessoNoMysql } from '../services/api';
 
 interface Step4Props {
@@ -32,28 +36,28 @@ export const Step4Parecer: React.FC<Step4Props> = ({
   const [sucessoSalvar, setSucessoSalvar] = useState<string | null>(null);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
-  // Documentos obrigatórios não marcados
+  const tipologia = formData.tipologia_atividade || 'GERAL';
+  const isRenovacao = formData.modalidade === 'RENOVACAO_LAS';
+
+  // Identifica documentos obrigatórios específicos que faltam
   const documentosFaltantes = useMemo(() => {
     const aplicaveis = DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
-      if (doc.somenteRenovacao && formData.modalidade !== 'RENOVACAO_LAS') {
-        return false;
-      }
-      return doc.obrigatorio;
+      if (doc.somenteRenovacao && !isRenovacao) return false;
+      if (doc.somenteTipologias && !doc.somenteTipologias.includes(tipologia)) return false;
+      return verificarDocumentoObrigatorio(doc, tipologia);
     });
 
     return aplicaveis.filter((doc: DocumentoBaseItem) => !formData.documentos_conferidos.includes(doc.id));
-  }, [formData.modalidade, formData.documentos_conferidos]);
+  }, [formData.modalidade, formData.tipologia_atividade, formData.documentos_conferidos, tipologia, isRenovacao]);
 
   const temPendenciaDocumental = documentosFaltantes.length > 0;
 
-  // Sugestão automática do setor destinatário
   const setorSugeridoInicial: DestinatarioParecer = useMemo(() => {
     if (formData.modalidade === 'RENOVACAO_LAS') return 'GABINETE';
     if (formData.modalidade === 'DISPENSA') return 'CLA';
     return formData.destinatario_parecer || 'CLA';
   }, [formData.modalidade, formData.destinatario_parecer]);
 
-  // Função pura para construir a redação do parecer
   const construirTextoParecer = (
     destinatarioAlvo: DestinatarioParecer,
     statusAlvo: StatusParecer
@@ -80,7 +84,6 @@ export const Step4Parecer: React.FC<Step4Props> = ({
         ? 'DECLARAÇÃO DE INEXIGIBILIDADE'
         : 'LICENÇA AMBIENTAL SIMPLIFICADA (LAS)';
 
-    // Atividades econômicas identificadas
     let atividadeDescricao = 'atividades econômicas constantes no requerimento';
     if (formData.cnae_principal?.descricao) {
       const secundarias = formData.cnaes_secundarios?.length 
@@ -89,7 +92,6 @@ export const Step4Parecer: React.FC<Step4Props> = ({
       atividadeDescricao = `${formData.cnae_principal.descricao}${secundarias}`;
     }
 
-    // Vocativo e Fecho conforme o setor selecionado
     let vocativo = 'À CLA,';
     let fecho = 'RESTITUAM-SE OS AUTOS À CLA para emissão do ato e prosseguimento.';
 
@@ -103,14 +105,8 @@ export const Step4Parecer: React.FC<Step4Props> = ({
       fecho = statusAlvo === 'DILIGENCIA'
         ? 'RESTITUAM-SE OS AUTOS À CLU para notificação do interessado e prosseguimento.'
         : 'RESTITUAM-SE OS AUTOS À CLU para as providências cabíveis e prosseguimento.';
-    } else {
-      vocativo = 'À CLA,';
-      fecho = statusAlvo === 'DILIGENCIA'
-        ? 'RESTITUAM-SE OS AUTOS À CLA para notificação do interessado e prosseguimento.'
-        : 'RESTITUAM-SE OS AUTOS À CLA para emissão do ato e prosseguimento.';
     }
 
-    // Se estiver em Diligência
     if (statusAlvo === 'DILIGENCIA' || temPendenciaDocumental) {
       const listaPendencias = documentosFaltantes.length > 0
         ? documentosFaltantes.map((d, i) => `   ${i + 1}. ${d.nome}`).join('\n')
@@ -135,7 +131,6 @@ Ante o exposto, esta Assessoria Técnica (ASTEC) manifesta-se pela BAIXA DOS AUT
 ${fecho}`;
     }
 
-    // Modelo de Deferimento Padrão ASTEC (conforme seu modelo oficial)
     let paragrafoDinamica = `Da análise das informações constantes do requerimento e no Relatório de Caracterização do Empreendimento (RCE), verifica-se que a dinâmica operacional no imóvel consiste precipuamente em ${atividadeDescricao}, montagem sob demanda e em pequena escala, sem estoque de matéria-prima ou subprodutos e sem geração de efluentes industriais.`;
 
     if (formData.modalidade === 'RENOVACAO_LAS') {
@@ -161,7 +156,6 @@ Ante o exposto, esta Assessoria Técnica (ASTEC) opina pelo DEFERIMENTO da ${mod
 ${fecho}`;
   };
 
-  // Atualiza o texto sempre que abrir a tela ou quando solicitado
   const sincronizarTexto = (
     destinatario: DestinatarioParecer = formData.destinatario_parecer || setorSugeridoInicial,
     status: StatusParecer = formData.status_parecer
@@ -175,7 +169,6 @@ ${fecho}`;
     }));
   };
 
-  // Garante que o texto seja gerado com os dados atuais ao entrar na etapa
   useEffect(() => {
     sincronizarTexto();
   }, [
@@ -184,7 +177,8 @@ ${fecho}`;
     formData.interessado,
     formData.endereco,
     formData.bairro,
-    formData.modalidade
+    formData.modalidade,
+    formData.tipologia_atividade
   ]);
 
   const handleCopiarClipboard = async () => {
@@ -360,7 +354,7 @@ ${fecho}`;
         <div className="flex items-center justify-between mb-1">
           <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
             <FileSearch className="w-4 h-4 text-slate-500" />
-            Texto do Parecer Técnico (Editável pelo Analista):
+            Texto do Parecer Técnico (Editável):
           </label>
           <span className="text-xs text-slate-500 font-medium">
             Direcionado: <strong>{
