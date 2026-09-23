@@ -16,7 +16,7 @@ import { ProcessoFormData, StatusParecer, DestinatarioParecer } from '../types';
 import { 
   DOCUMENTOS_BASE_CAMACARI, 
   DocumentoBaseItem,
-  verificarDocumentoObrigatorio 
+  verificarDocumentoObrigatorioSedur 
 } from '../data/normativasCamacari';
 import { salvarProcessoNoMysql } from '../services/api';
 
@@ -37,18 +37,21 @@ export const Step4Parecer: React.FC<Step4Props> = ({
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
   const tipologia = formData.tipologia_atividade || 'GERAL';
-  const isRenovacao = formData.modalidade === 'RENOVACAO_LAS';
+  const modalidade = formData.modalidade;
+  const isRenovacao = modalidade === 'RENOVACAO_LAS';
+  const isInexigibilidade = modalidade === 'INEXIGIBILIDADE';
 
-  // Identifica documentos obrigatórios específicos que faltam
+  // Identifica documentos obrigatórios da SEDUR (coluna C = "x") que não foram conferidos
   const documentosFaltantes = useMemo(() => {
     const aplicaveis = DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
       if (doc.somenteRenovacao && !isRenovacao) return false;
+      if (isInexigibilidade && doc.dispensadoEmInexigibilidade) return false;
       if (doc.somenteTipologias && !doc.somenteTipologias.includes(tipologia)) return false;
-      return verificarDocumentoObrigatorio(doc, tipologia);
+      return verificarDocumentoObrigatorioSedur(doc, modalidade, tipologia);
     });
 
     return aplicaveis.filter((doc: DocumentoBaseItem) => !formData.documentos_conferidos.includes(doc.id));
-  }, [formData.modalidade, formData.tipologia_atividade, formData.documentos_conferidos, tipologia, isRenovacao]);
+  }, [formData.modalidade, formData.tipologia_atividade, formData.documentos_conferidos, tipologia, isRenovacao, isInexigibilidade, modalidade]);
 
   const temPendenciaDocumental = documentosFaltantes.length > 0;
 
@@ -109,7 +112,7 @@ export const Step4Parecer: React.FC<Step4Props> = ({
 
     if (statusAlvo === 'DILIGENCIA' || temPendenciaDocumental) {
       const listaPendencias = documentosFaltantes.length > 0
-        ? documentosFaltantes.map((d, i) => `   ${i + 1}. ${d.nome}`).join('\n')
+        ? documentosFaltantes.map((d, i) => `   ${i + 1}. [Item ${d.itemSedur}] ${d.nome}`).join('\n')
         : '   1. Esclarecimento técnico acerca da dinâmica operacional no imóvel.';
 
       return `INTERESSADO: ${nomeEmpresa}
@@ -293,10 +296,10 @@ ${fecho}`;
           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <h3 className="text-sm font-bold text-amber-900">
-              Atenção: Há {documentosFaltantes.length} documento(s) obrigatório(s) não conferido(s)
+              Atenção: Há {documentosFaltantes.length} documento(s) com "x" na relação da SEDUR não conferido(s)
             </h3>
             <p className="text-xs text-amber-800 mt-1">
-              Para processos incompletos, a conclusão técnica sugerida é a <strong>Baixa em Diligência</strong>.
+              Para processos com pendência na lista da CLA, a conclusão técnica é a <strong>Baixa em Diligência</strong>.
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -328,7 +331,7 @@ ${fecho}`;
         <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-semibold">
           <span className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            Todos os documentos obrigatórios foram conferidos. Processo apto para Deferimento.
+            Todos os documentos obrigatórios da SEDUR (coluna C) foram conferidos. Processo apto para Deferimento.
           </span>
           <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded text-[11px]">
             Instrução 100%
