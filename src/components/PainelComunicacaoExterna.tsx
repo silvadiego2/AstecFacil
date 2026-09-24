@@ -18,7 +18,8 @@ import {
   Square,
   ArrowRightLeft,
   FileText,
-  Tag
+  Tag,
+  Pencil
 } from 'lucide-react';
 import { ComunicacaoExterna, DocumentoNotificacao } from '../types';
 
@@ -70,6 +71,8 @@ export const PainelComunicacaoExterna: React.FC = () => {
   
   // Modal de Cadastro/Edição
   const [modalAberto, setModalAberto] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null); // ID do processo sendo editado (null se for novo)
+
   const [novoProcesso, setNovoProcesso] = useState('');
   const [novoInteressado, setNovoInteressado] = useState('');
   const [novoTipoAssunto, setNovoTipoAssunto] = useState('LO');
@@ -104,8 +107,40 @@ export const PainelComunicacaoExterna: React.FC = () => {
     }
   };
 
-  // Criação de Nova Notificação
-  const handleCriarComunicacao = () => {
+  const limparFormulario = () => {
+    setEditandoId(null);
+    setNovoProcesso('');
+    setNovoInteressado('');
+    setNovoTipoAssunto('LO');
+    setNovaQtdProrrogacoes(0);
+    setNovoSetor('CLA');
+    setNovaDataEnvio(new Date().toISOString().split('T')[0]);
+    setNovoPrazoDias(30);
+    setNovoTextoDocs('');
+    setNovasObs('');
+  };
+
+  const handleAbrirCriacao = () => {
+    limparFormulario();
+    setModalAberto(true);
+  };
+
+  const handleAbrirEdicao = (c: typeof comunicacoes[0]) => {
+    setEditandoId(c.id);
+    setNovoProcesso(c.numero_processo);
+    setNovoInteressado(c.interessado);
+    setNovoTipoAssunto(c.tipo_assunto || 'LO');
+    setNovaQtdProrrogacoes(c.qtd_prorrogacoes || 0);
+    setNovoSetor(c.setor_origem);
+    setNovaDataEnvio(c.data_envio);
+    setNovoPrazoDias(c.prazo_dias);
+    setNovoTextoDocs(c.documentos.map(d => d.nome).join('\n'));
+    setNovasObs(c.observacoes || '');
+    setModalAberto(true);
+  };
+
+  // Criação ou Edição de Notificação
+  const handleSalvarComunicacao = () => {
     if (!novoProcesso.trim() || !novoInteressado.trim()) {
       alert('Informe o Número do Processo e o Interessado.');
       return;
@@ -116,40 +151,73 @@ export const PainelComunicacaoExterna: React.FC = () => {
       .map(l => l.trim().replace(/^[-•*0-9.]+\s*/, ''))
       .filter(Boolean);
 
-    const docsFormatados: DocumentoNotificacao[] = linhasDocs.length > 0
-      ? linhasDocs.map((nome, idx) => ({
-          id: `doc-${Date.now()}-${idx}`,
-          nome,
-          entregue: false,
-        }))
-      : [{ id: `doc-${Date.now()}-0`, nome: 'Complementação de instrução documental', entregue: false }];
-
     const dataLimiteCalculada = calcularDataLimite(novaDataEnvio, novoPrazoDias);
 
-    const novaCom = {
-      id: `com-${Date.now()}`,
-      numero_processo: novoProcesso.trim(),
-      interessado: novoInteressado.trim(),
-      tipo_assunto: novoTipoAssunto,
-      qtd_prorrogacoes: novaQtdProrrogacoes,
-      setor_origem: novoSetor,
-      data_envio: novaDataEnvio,
-      prazo_dias: novoPrazoDias,
-      data_limite: dataLimiteCalculada,
-      documentos: docsFormatados,
-      observacoes: novasObs.trim(),
-      created_at: new Date().toISOString(),
-    };
+    if (editandoId) {
+      // MODO EDIÇÃO: Atualiza o registro existente preservando o status de entrega dos documentos já conferidos
+      const itemExistente = comunicacoes.find(c => c.id === editandoId);
+      const docsAntigos = itemExistente?.documentos || [];
 
-    salvarLista([novaCom, ...comunicacoes]);
+      const docsAtualizados: DocumentoNotificacao[] = linhasDocs.length > 0
+        ? linhasDocs.map((nome, idx) => {
+            const achado = docsAntigos.find(d => d.nome.toLowerCase() === nome.toLowerCase());
+            return {
+              id: achado ? achado.id : `doc-${Date.now()}-${idx}`,
+              nome,
+              entregue: achado ? achado.entregue : false,
+              data_entrega: achado ? achado.data_entrega : undefined,
+            };
+          })
+        : [{ id: `doc-${Date.now()}-0`, nome: 'Complementação de instrução documental', entregue: false }];
+
+      const listaAtualizada = comunicacoes.map(c => {
+        if (c.id !== editandoId) return c;
+        return {
+          ...c,
+          numero_processo: novoProcesso.trim(),
+          interessado: novoInteressado.trim(),
+          tipo_assunto: novoTipoAssunto,
+          qtd_prorrogacoes: novaQtdProrrogacoes,
+          setor_origem: novoSetor,
+          data_envio: novaDataEnvio,
+          prazo_dias: novoPrazoDias,
+          data_limite: dataLimiteCalculada,
+          documentos: docsAtualizados,
+          observacoes: novasObs.trim(),
+        };
+      });
+
+      salvarLista(listaAtualizada);
+    } else {
+      // MODO CRIAÇÃO: Adiciona um novo acompanhamento
+      const docsFormatados: DocumentoNotificacao[] = linhasDocs.length > 0
+        ? linhasDocs.map((nome, idx) => ({
+            id: `doc-${Date.now()}-${idx}`,
+            nome,
+            entregue: false,
+          }))
+        : [{ id: `doc-${Date.now()}-0`, nome: 'Complementação de instrução documental', entregue: false }];
+
+      const novaCom = {
+        id: `com-${Date.now()}`,
+        numero_processo: novoProcesso.trim(),
+        interessado: novoInteressado.trim(),
+        tipo_assunto: novoTipoAssunto,
+        qtd_prorrogacoes: novaQtdProrrogacoes,
+        setor_origem: novoSetor,
+        data_envio: novaDataEnvio,
+        prazo_dias: novoPrazoDias,
+        data_limite: dataLimiteCalculada,
+        documentos: docsFormatados,
+        observacoes: novasObs.trim(),
+        created_at: new Date().toISOString(),
+      };
+
+      salvarLista([novaCom, ...comunicacoes]);
+    }
+
     setModalAberto(false);
-    setNovoProcesso('');
-    setNovoInteressado('');
-    setNovoTipoAssunto('LO');
-    setNovaQtdProrrogacoes(0);
-    setNovoTextoDocs('');
-    setNovasObs('');
-    setNovoPrazoDias(30);
+    limparFormulario();
   };
 
   // Alternar entrega de documento individual
@@ -176,14 +244,13 @@ export const PainelComunicacaoExterna: React.FC = () => {
     salvarLista(comunicacoes.filter(c => c.id !== id));
   };
 
-  // Obter nome legível do tipo de assunto
   const obterDescricaoAssunto = (siglaOrId?: string) => {
     if (!siglaOrId) return 'Licenciamento Ambiental';
     const achado = TIPOS_ASSUNTOS_AMBIENTAIS.find(t => t.id === siglaOrId || t.sigla === siglaOrId);
     return achado ? achado.nome : siglaOrId;
   };
 
-  // Copia o texto formal para colar na aba Comunicação Externa do SIS-SEDUR
+  // Copia mensagem de notificação externa
   const handleCopiarMensagemSisSedur = (c: typeof comunicacoes[0]) => {
     const pendentes = c.documentos.filter(d => !d.entregue).map((d, i) => `  ${i + 1}. ${d.nome}`).join('\n');
     const dataLimiteFmt = c.data_limite.split('-').reverse().join('/');
@@ -192,7 +259,6 @@ export const PainelComunicacaoExterna: React.FC = () => {
     const prorrogacoes = c.qtd_prorrogacoes || 0;
 
     let msg = '';
-    // Se o prazo expirou e atingiu o limite de prorrogações (ou se venceu)
     if (dias < 0 && prorrogacoes >= 2) {
       msg = `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
 Processo nº: ${c.numero_processo}
@@ -231,7 +297,7 @@ Prefeitura Municipal de Camaçari`;
     setTimeout(() => setCopiadoId(null), 3000);
   };
 
-  // Copia o Modelo de Despacho / Parecer Interno devolvendo com sugestão de arquivamento
+  // Copia parecer/despacho interno sugerindo arquivamento
   const handleCopiarDespachoDevolucao = (c: typeof comunicacoes[0]) => {
     const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
     const dataHojeFmt = new Date().toLocaleDateString('pt-BR');
@@ -261,7 +327,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
     setTimeout(() => setCopiadoDespachoId(null), 3000);
   };
 
-  // EXPORTAÇÃO COMPLETA PARA EXCEL (.XLS FORMATADO COM COLUNA DO ASSUNTO)
+  // EXPORTAÇÃO PARA EXCEL (.XLS)
   const handleExportarExcel = () => {
     if (comunicacoes.length === 0) {
       alert('Não há processos cadastrados para exportar.');
@@ -370,7 +436,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
     document.body.removeChild(link);
   };
 
-  // Cálculos de Resumo (KPIs)
+  // Resumo (KPIs)
   const total = comunicacoes.length;
   const cumpridos = comunicacoes.filter(c => c.documentos.length > 0 && c.documentos.every(d => d.entregue)).length;
   const expirados = comunicacoes.filter(c => {
@@ -434,7 +500,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
           <button
             type="button"
-            onClick={() => setModalAberto(true)}
+            onClick={handleAbrirCriacao}
             className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -697,14 +763,27 @@ Assessoria Técnica - ASTEC / SEDUR`;
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleExcluir(c.id)}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                    title="Excluir Acompanhamento"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {/* Botão Editar Acompanhamento */}
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirEdicao(c)}
+                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                      title="Editar Acompanhamento"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+
+                    {/* Botão Excluir Acompanhamento */}
+                    <button
+                      type="button"
+                      onClick={() => handleExcluir(c.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                      title="Excluir Acompanhamento"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -712,18 +791,21 @@ Assessoria Técnica - ASTEC / SEDUR`;
         )}
       </div>
 
-      {/* MODAL DE CADASTRO DE NOVA COMUNICAÇÃO EXTERNA */}
+      {/* MODAL DE CADASTRO / EDIÇÃO DE COMUNICAÇÃO EXTERNA */}
       {modalAberto && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <SendHorizontal className="w-4 h-4 text-emerald-600" />
-                Cadastrar Comunicação Externa no SIS-SEDUR
+                {editandoId ? <Pencil className="w-4 h-4 text-blue-600" /> : <SendHorizontal className="w-4 h-4 text-emerald-600" />}
+                {editandoId ? 'Editar Comunicação Externa' : 'Cadastrar Comunicação Externa no SIS-SEDUR'}
               </h3>
               <button
                 type="button"
-                onClick={() => setModalAberto(false)}
+                onClick={() => {
+                  setModalAberto(false);
+                  limparFormulario();
+                }}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
                 <X className="w-5 h-5" />
@@ -798,7 +880,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
                 {/* Controle de Prorrogações Concedidas */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Prorrogações Anteriores Concedidas
+                    Prorrogações Concedidas
                   </label>
                   <select
                     value={novaQtdProrrogacoes}
@@ -879,17 +961,20 @@ Assessoria Técnica - ASTEC / SEDUR`;
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setModalAberto(false)}
+                onClick={() => {
+                  setModalAberto(false);
+                  limparFormulario();
+                }}
                 className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg transition"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleCriarComunicacao}
+                onClick={handleSalvarComunicacao}
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm"
               >
-                Salvar Acompanhamento
+                {editandoId ? 'Salvar Alterações' : 'Salvar Acompanhamento'}
               </button>
             </div>
           </div>
