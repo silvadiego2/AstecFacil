@@ -19,7 +19,8 @@ import {
   ArrowRightLeft,
   FileText,
   Tag,
-  Pencil
+  Pencil,
+  Eye
 } from 'lucide-react';
 import { ComunicacaoExterna, DocumentoNotificacao } from '../types';
 
@@ -46,9 +47,6 @@ export const TIPOS_ASSUNTOS_AMBIENTAIS: TipoAssuntoItem[] = [
   { id: 'REGULARIZACAO', sigla: 'LOR', nome: 'Licença de Regularização / Operação Corretiva', categoria: 'Especiais' },
 ];
 
-/**
- * Retorna cores visuais exclusivas para a badge de cada tipo de licença
- */
 export function obterEstiloAssunto(siglaOrId?: string): { bg: string; text: string; border: string } {
   switch (siglaOrId) {
     case 'LP':
@@ -90,6 +88,13 @@ export function calcularDiasRestantes(dataLimite: string): number {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
+export type CenarioDespacho = 
+  | 'NOTIF_INICIAL'
+  | 'PRORROG_1'
+  | 'PRORROG_2'
+  | 'INDEFERIMENTO_ARQUIVAMENTO'
+  | 'DESPACHO_DEVOLUCAO_ARQUIVAMENTO';
+
 export const PainelComunicacaoExterna: React.FC = () => {
   const [comunicacoes, setComunicacoes] = useState<(ComunicacaoExterna & { tipo_assunto?: string; qtd_prorrogacoes?: number })[]>([]);
   const [busca, setBusca] = useState('');
@@ -109,8 +114,12 @@ export const PainelComunicacaoExterna: React.FC = () => {
   const [novoTextoDocs, setNovoTextoDocs] = useState('');
   const [novasObs, setNovasObs] = useState('');
 
-  const [copiadoId, setCopiadoId] = useState<string | null>(null);
-  const [copiadoDespachoId, setCopiadoDespachoId] = useState<string | null>(null);
+  // Modal de Visualização e Emissão de Despacho
+  const [modalVisualizarAberto, setModalVisualizarAberto] = useState(false);
+  const [processoSelecionado, setProcessoSelecionado] = useState<typeof comunicacoes[0] | null>(null);
+  const [cenarioSelecionado, setCenarioSelecionado] = useState<CenarioDespacho>('NOTIF_INICIAL');
+  const [textoPreview, setTextoPreview] = useState('');
+  const [copiadoPreview, setCopiadoPreview] = useState(false);
 
   // Carrega do LocalStorage
   useEffect(() => {
@@ -163,6 +172,149 @@ export const PainelComunicacaoExterna: React.FC = () => {
     setNovoTextoDocs(c.documentos.map(d => d.nome).join('\n'));
     setNovasObs(c.observacoes || '');
     setModalAberto(true);
+  };
+
+  const obterDescricaoAssunto = (siglaOrId?: string) => {
+    if (!siglaOrId) return 'Licenciamento Ambiental';
+    const achado = TIPOS_ASSUNTOS_AMBIENTAIS.find(t => t.id === siglaOrId || t.sigla === siglaOrId);
+    return achado ? achado.nome : siglaOrId;
+  };
+
+  // Gerador de Texto conforme o cenário selecionado
+  const gerarTextoPorCenario = (c: typeof comunicacoes[0], cenario: CenarioDespacho): string => {
+    const pendentes = c.documentos.filter(d => !d.entregue).map((d, i) => `  ${i + 1}. ${d.nome}`).join('\n');
+    const dataLimiteFmt = c.data_limite.split('-').reverse().join('/');
+    const dataHojeFmt = new Date().toLocaleDateString('pt-BR');
+    const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
+    const prorrogacoes = c.qtd_prorrogacoes || 0;
+
+    switch (cenario) {
+      case 'NOTIF_INICIAL':
+        return `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
+Processo nº: ${c.numero_processo}
+Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
+Setor: ${c.setor_origem}
+
+Prezado(a) Requerente,
+
+Para fins de instrução técnica do pleito de ${assuntoStr}, solicitamos a juntada aos autos, no prazo de ${c.prazo_dias} dias (até ${dataLimiteFmt}), dos seguintes documentos e esclarecimentos:
+
+${pendentes || '  1. Regularização de documentos pendentes.'}
+
+Informamos que é admitida a prorrogação de prazo por até 30 dias (e nova extensão de 30 dias, limite máximo), mediante requerimento justificado protocolado antes do vencimento. Esgotado o prazo sem atendimento, os autos serão devolvidos ao setor de origem (${c.setor_origem}) sugerindo-se o arquivamento.
+
+Assessoria Técnica - ASTEC / SEDUR
+Prefeitura Municipal de Camaçari`;
+
+      case 'PRORROG_1':
+        return `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
+DEFERIMENTO DE 1ª PRORROGAÇÃO DE PRAZO
+Processo nº: ${c.numero_processo}
+Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
+
+Prezado(a) Requerente,
+
+1. Em atenção ao requerimento protocolado, DEFERE-SE a 1ª (primeira) prorrogação de prazo por mais 30 (trinta) dias para apresentação dos documentos pendentes referentes ao pleito de ${assuntoStr}.
+
+2. O novo prazo fatal para cumprimento integral das exigências encerra-se em ${dataLimiteFmt}.
+
+3. Fica ciente o requerente de que eventual novo pedido de prorrogação dependerá de requerimento formal e tempestivo, ficando adstrito ao limite máximo regulamentar de 2 (duas) prorrogações.
+
+Assessoria Técnica - ASTEC / SEDUR
+Prefeitura Municipal de Camaçari`;
+
+      case 'PRORROG_2':
+        return `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
+DEFERIMENTO DE 2ª E ÚLTIMA PRORROGAÇÃO DE PRAZO (LIMITE MÁXIMO)
+Processo nº: ${c.numero_processo}
+Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
+
+Prezado(a) Requerente,
+
+1. Em caráter excepcional, DEFERE-SE a 2ª (segunda) e ÚLTIMA prorrogação de prazo por mais 30 (trinta) dias para o atendimento das pendências do processo em epígrafe.
+
+2. O prazo final e improrrogável encerra-se em ${dataLimiteFmt}.
+
+3. ADVERTE-SE que, esgotado este prazo sem o atendimento cabal das diligências, não haverá concessão de novo prazo adicional, sendo o processo encaminhado ao setor de origem (${c.setor_origem}) com manifestação formal sugerindo o ARQUIVAMENTO definitivo.
+
+Assessoria Técnica - ASTEC / SEDUR
+Prefeitura Municipal de Camaçari`;
+
+      case 'INDEFERIMENTO_ARQUIVAMENTO':
+        return `OFÍCIO / NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
+Processo nº: ${c.numero_processo}
+Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
+
+Assunto: Indeferimento de prorrogação de prazo e ciência de encaminhamento para arquivamento.
+
+Prezado(a) Requerente,
+
+1. Informamos que o pedido de dilação de prazo formulado nos autos foi INDEFERIDO, tendo em vista que já foram concedidas anteriormente ${prorrogacoes > 0 ? prorrogacoes : 2} (duas) prorrogações de 30 dias, restando esgotado o limite legal e regulamentar.
+
+2. Constatada a preclusão temporal e o transcurso do período assinalado sem o saneamento integral das pendências técnicas, comunicamos que os autos serão devolvidos ao setor de origem (${c.setor_origem}) com parecer técnico sugerindo o ARQUIVAMENTO do processo administrativo.
+
+Assessoria Técnica - ASTEC / SEDUR
+Prefeitura Municipal de Camaçari`;
+
+      case 'DESPACHO_DEVOLUCAO_ARQUIVAMENTO':
+        return `DESPACHO / COTA NO PARECER INTERNO
+
+Processo SIS-SEDUR nº: ${c.numero_processo}
+Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
+Origem: ASTEC / SEDUR
+Destino: ${c.setor_origem}
+
+1. RELATÓRIO
+Trata-se de processo administrativo referente ao ato de ${assuntoStr}. O requerente foi notificado para juntada de documentação indispensável à continuidade da instrução técnica, tendo usufruído das prorrogações de prazo regulamentares (${prorrogacoes > 0 ? prorrogacoes : 2} prorrogações de 30 dias).
+
+2. FUNDAMENTAÇÃO
+Decorrido o prazo fatal sem que houvesse a entrega da totalidade dos documentos exigidos, opera-se a preclusão temporal. Não subsiste amparo administrativo para nova dilação de prazo após o esgotamento do limite fixado. A inércia da parte inviabiliza a conclusão meritória da análise ambiental.
+
+3. CONCLUSÃO E ENCAMINHAMENTO
+Ante o exposto:
+a) INDEFERE-SE eventual pedido de dilação adicional de prazo;
+b) RESTITUEM-SE os autos a esta unidade (${c.setor_origem}), sugerindo-se o ARQUIVAMENTO definitivo do processo administrativo, sem concessão da licença requerida, e a respectiva baixa no sistema SIS-SEDUR.
+
+Camaçari - BA, ${dataHojeFmt}.
+
+Assessoria Técnica - ASTEC / SEDUR`;
+    }
+  };
+
+  const handleAbrirVisualizador = (c: typeof comunicacoes[0]) => {
+    const dias = calcularDiasRestantes(c.data_limite);
+    const prorrogacoes = c.qtd_prorrogacoes || 0;
+
+    let cenarioInicial: CenarioDespacho = 'NOTIF_INICIAL';
+    if (dias < 0 || prorrogacoes >= 2) {
+      cenarioInicial = 'INDEFERIMENTO_ARQUIVAMENTO';
+    } else if (prorrogacoes === 1) {
+      cenarioInicial = 'PRORROG_1';
+    }
+
+    setProcessoSelecionado(c);
+    setCenarioSelecionado(cenarioInicial);
+    setTextoPreview(gerarTextoPorCenario(c, cenarioInicial));
+    setCopiadoPreview(false);
+    setModalVisualizarAberto(true);
+  };
+
+  const handleMudarCenario = (cenario: CenarioDespacho) => {
+    if (!processoSelecionado) return;
+    setCenarioSelecionado(cenario);
+    setTextoPreview(gerarTextoPorCenario(processoSelecionado, cenario));
+    setCopiadoPreview(false);
+  };
+
+  const handleCopiarPreview = () => {
+    navigator.clipboard.writeText(textoPreview);
+    setCopiadoPreview(true);
+    setTimeout(() => setCopiadoPreview(false), 2500);
   };
 
   const handleSalvarComunicacao = () => {
@@ -264,87 +416,6 @@ export const PainelComunicacaoExterna: React.FC = () => {
   const handleExcluir = (id: string) => {
     if (!confirm('Deseja remover este acompanhamento?')) return;
     salvarLista(comunicacoes.filter(c => c.id !== id));
-  };
-
-  const obterDescricaoAssunto = (siglaOrId?: string) => {
-    if (!siglaOrId) return 'Licenciamento Ambiental';
-    const achado = TIPOS_ASSUNTOS_AMBIENTAIS.find(t => t.id === siglaOrId || t.sigla === siglaOrId);
-    return achado ? achado.nome : siglaOrId;
-  };
-
-  const handleCopiarMensagemSisSedur = (c: typeof comunicacoes[0]) => {
-    const pendentes = c.documentos.filter(d => !d.entregue).map((d, i) => `  ${i + 1}. ${d.nome}`).join('\n');
-    const dataLimiteFmt = c.data_limite.split('-').reverse().join('/');
-    const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
-    const dias = calcularDiasRestantes(c.data_limite);
-    const prorrogacoes = c.qtd_prorrogacoes || 0;
-
-    let msg = '';
-    if (dias < 0 && prorrogacoes >= 2) {
-      msg = `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
-Processo nº: ${c.numero_processo}
-Interessado: ${c.interessado}
-Assunto: ${assuntoStr}
-
-Prezado(a) Requerente,
-
-Informamos que o pedido de prorrogação de prazo para cumprimento de pendências técnicas foi INDEFERIDO, tendo em vista que já foram concedidas anteriormente 2 (duas) prorrogações de 30 dias no curso do processo, restando esgotado o limite regulamentar.
-
-Diante da preclusão temporal e da ausência de juntada dos documentos solicitados, comunicamos que os autos serão devolvidos ao setor de origem (${c.setor_origem}) com sugestão de ARQUIVAMENTO.
-
-Assessoria Técnica - ASTEC / SEDUR
-Prefeitura Municipal de Camaçari`;
-    } else {
-      msg = `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
-Processo nº: ${c.numero_processo}
-Interessado: ${c.interessado}
-Assunto: ${assuntoStr}
-Setor: ${c.setor_origem}
-
-Prezado(a) Requerente,
-
-Para fins de instrução técnica do pleito de ${assuntoStr}, solicitamos a juntada aos autos, no prazo de ${c.prazo_dias} dias (até ${dataLimiteFmt}), dos seguintes documentos e esclarecimentos:
-
-${pendentes || '  1. Regularização de documentos pendentes.'}
-
-Informamos que é admitida a prorrogação de prazo por até 30 dias (e nova extensão de 30 dias, limite máximo), mediante requerimento justificado protocolado antes do vencimento. Esgotado o prazo sem atendimento, os autos serão devolvidos ao setor de origem (${c.setor_origem}) sugerindo-se o arquivamento.
-
-Assessoria Técnica - ASTEC / SEDUR
-Prefeitura Municipal de Camaçari`;
-    }
-
-    navigator.clipboard.writeText(msg);
-    setCopiadoId(c.id);
-    setTimeout(() => setCopiadoId(null), 3000);
-  };
-
-  const handleCopiarDespachoDevolucao = (c: typeof comunicacoes[0]) => {
-    const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
-    const dataHojeFmt = new Date().toLocaleDateString('pt-BR');
-    const prorrogacoes = c.qtd_prorrogacoes || 0;
-    const textoProrrogacao = prorrogacoes === 1 
-      ? '1 (uma) prorrogação de 30 dias' 
-      : `${prorrogacoes > 0 ? prorrogacoes : 2} (duas) prorrogações sucessivas de 30 dias`;
-
-    const despacho = `DESPACHO / COTA NO PARECER INTERNO
-
-Processo SIS-SEDUR nº: ${c.numero_processo}
-Interessado: ${c.interessado}
-Assunto: ${assuntoStr}
-Origem: ASTEC / SEDUR
-Destino: ${c.setor_origem}
-
-1. Trata-se de processo administrativo referente a ${assuntoStr}. O requerente foi notificado para juntada de documentação indispensável à continuidade da instrução, tendo sido deferidas ${textoProrrogacao}.
-2. Transcorrido o prazo regulamentar sem o saneamento das pendências, resta inviabilizada a conclusão da análise técnica por inércia da parte.
-3. Não havendo mais suporte procedimental para concessão de novo prazo adicional, INDEFERE-SE eventual dilação e RESTITUEM-SE os autos ao setor de origem (${c.setor_origem}) com manifestação sugerindo o ARQUIVAMENTO do processo administrativo.
-
-Camaçari - BA, ${dataHojeFmt}.
-
-Assessoria Técnica - ASTEC / SEDUR`;
-
-    navigator.clipboard.writeText(despacho);
-    setCopiadoDespachoId(c.id);
-    setTimeout(() => setCopiadoDespachoId(null), 3000);
   };
 
   const handleExportarExcel = () => {
@@ -470,7 +541,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
     return !todosEntregues && dias >= 0 && dias <= 7;
   }).length;
 
-  // Filtragem da lista
+  // Filtragem
   const listaFiltrada = useMemo(() => {
     return comunicacoes.filter(c => {
       const termo = busca.toLowerCase();
@@ -505,7 +576,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
             Controle de Comunicação Externa e Prazos (SIS-SEDUR)
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Acompanhe prazos fatais de diligências, entregas documentais pelo requerente e alertas de devolução ao setor de origem.
+            Acompanhe prazos fatais de diligências, entregas documentais pelo requerente e emita despachos de arquivamento.
           </p>
         </div>
 
@@ -616,7 +687,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         </div>
       </div>
 
-      {/* LISTA DE PROCESSOS COM VISUALIZAÇÃO OTIMIZADA */}
+      {/* LISTA DE PROCESSOS */}
       <div className="space-y-4">
         {listaFiltrada.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 p-6">
@@ -638,46 +709,44 @@ Assessoria Técnica - ASTEC / SEDUR`;
             const prorrogacoes = c.qtd_prorrogacoes || 0;
             const numeroSequencial = String(index + 1).padStart(2, '0');
 
-            // Definição da borda lateral e tom de fundo conforme o status
-            let estiloCard = 'border-l-[6px] border-l-indigo-500 border-slate-200 bg-white hover:border-slate-300';
+            // =========================================================================
+            // CORES INVERTIDAS: Cinza em repouso e Roxo vivo ao passar o mouse
+            // =========================================================================
+            let estiloCard = 'border-l-[6px] border-l-slate-300 border-slate-200 bg-white hover:border-l-purple-600 hover:border-purple-300 hover:bg-purple-50/10 transition-all duration-200';
+
             if (todosEntregues) {
-              estiloCard = 'border-l-[6px] border-l-emerald-500 border-emerald-300 bg-emerald-50/20';
+              estiloCard = 'border-l-[6px] border-l-emerald-500 border-emerald-300 bg-emerald-50/20 hover:border-l-emerald-600 hover:border-emerald-400 transition-all duration-200';
             } else if (dias < 0) {
-              estiloCard = 'border-l-[6px] border-l-rose-500 border-rose-300 bg-rose-50/20';
+              estiloCard = 'border-l-[6px] border-l-rose-500 border-rose-300 bg-rose-50/20 hover:border-l-rose-600 hover:border-rose-400 transition-all duration-200';
             } else if (dias <= 7) {
-              estiloCard = 'border-l-[6px] border-l-amber-500 border-amber-300 bg-amber-50/20';
+              estiloCard = 'border-l-[6px] border-l-amber-500 border-amber-300 bg-amber-50/20 hover:border-l-amber-600 hover:border-amber-400 transition-all duration-200';
             }
 
             return (
               <div 
                 key={c.id}
-                className={`rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden ${estiloCard}`}
+                className={`rounded-2xl border shadow-sm hover:shadow-md overflow-hidden ${estiloCard}`}
               >
-                {/* Cabeçalho do Card com Numeração Sequencial */}
+                {/* Cabeçalho do Card */}
                 <div className="bg-slate-50/80 border-b border-slate-100 px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2.5">
-                    {/* Número do Card */}
                     <span className="px-2.5 py-0.5 rounded-md text-xs font-black font-mono bg-slate-900 text-white tracking-wider shadow-sm">
                       #{numeroSequencial}
                     </span>
 
-                    {/* Número do Processo */}
                     <span className="font-mono font-bold text-sm text-slate-900">
                       {c.numero_processo}
                     </span>
 
-                    {/* Badge Colorida por Tipo de Assunto Ambiental */}
                     <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border flex items-center gap-1 shadow-2xs ${estiloAssunto.bg} ${estiloAssunto.text} ${estiloAssunto.border}`}>
                       <Tag className="w-3 h-3" />
                       {assuntoNome}
                     </span>
 
-                    {/* Setor de Origem */}
                     <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-white text-slate-700 border border-slate-200">
                       Origem: {c.setor_origem}
                     </span>
 
-                    {/* Badge de Prorrogações */}
                     {prorrogacoes > 0 && (
                       <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-purple-50 text-purple-700 border border-purple-200">
                         {prorrogacoes}ª Prorrogação (+30d)
@@ -685,7 +754,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
                     )}
                   </div>
 
-                  {/* Badge de Status / Prazo Fatal */}
+                  {/* Status / Alerta */}
                   <div className="flex items-center gap-2 self-start sm:self-auto">
                     {todosEntregues ? (
                       <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
@@ -713,14 +782,12 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
                 {/* Corpo do Card */}
                 <div className="p-5 space-y-4">
-                  {/* Interessado */}
                   <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                     <Building2 className="w-4 h-4 text-slate-400" />
                     <span>Requerente / Interessado:</span>
                     <span className="text-slate-950 font-bold text-sm">{c.interessado}</span>
                   </div>
 
-                  {/* Linha de Datas e Prazos */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-slate-50/90 p-2.5 rounded-xl border border-slate-200 font-mono">
                     <div>
                       <span className="text-slate-400 block text-[10px]">DATA ENVIO:</span>
@@ -777,20 +844,11 @@ Assessoria Técnica - ASTEC / SEDUR`;
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => handleCopiarMensagemSisSedur(c)}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                        onClick={() => handleAbrirVisualizador(c)}
+                        className="px-3.5 py-1.5 bg-slate-900 hover:bg-purple-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
                       >
-                        {copiadoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copiadoId === c.id ? 'Notificação Copiada!' : 'Copiar Notificação Requerente'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleCopiarDespachoDevolucao(c)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
-                      >
-                        {copiadoDespachoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <FileText className="w-3.5 h-3.5 text-slate-600" />}
-                        {copiadoDespachoId === c.id ? 'Despacho Copiado!' : 'Copiar Despacho p/ Parecer'}
+                        <Eye className="w-3.5 h-3.5 text-purple-300" />
+                        Visualizar Despachos / Modelos
                       </button>
 
                       {dias < 0 && !todosEntregues && (
@@ -804,7 +862,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
                       <button
                         type="button"
                         onClick={() => handleAbrirEdicao(c)}
-                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition"
                         title="Editar Acompanhamento"
                       >
                         <Pencil className="w-4 h-4" />
@@ -827,13 +885,175 @@ Assessoria Técnica - ASTEC / SEDUR`;
         )}
       </div>
 
+      {/* MODAL DE VISUALIZAÇÃO DE DESPACHOS */}
+      {modalVisualizarAberto && processoSelecionado && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh]">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-purple-600" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Visualizar e Emitir Despacho / Comunicação
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Processo: <span className="font-mono font-bold text-slate-700">{processoSelecionado.numero_processo}</span> — {processoSelecionado.interessado}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalVisualizarAberto(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                  Selecione o Modelo de Comunicação / Despacho a emitir:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleMudarCenario('NOTIF_INICIAL')}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition flex flex-col justify-between ${
+                      cenarioSelecionado === 'NOTIF_INICIAL'
+                        ? 'border-purple-600 bg-purple-50/70 text-purple-950 font-bold ring-2 ring-purple-500'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>1. Notificação Inicial de Diligência</span>
+                    <span className="text-[10px] font-normal text-slate-500 mt-1">
+                      Aviso de prazo regular de {processoSelecionado.prazo_dias} dias p/ documentos.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleMudarCenario('PRORROG_1')}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition flex flex-col justify-between ${
+                      cenarioSelecionado === 'PRORROG_1'
+                        ? 'border-purple-600 bg-purple-50/70 text-purple-950 font-bold ring-2 ring-purple-500'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>2. Deferir 1ª Prorrogação (+30d)</span>
+                    <span className="text-[10px] font-normal text-slate-500 mt-1">
+                      Concessão adicional de 30 dias a pedido da parte.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleMudarCenario('PRORROG_2')}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition flex flex-col justify-between ${
+                      cenarioSelecionado === 'PRORROG_2'
+                        ? 'border-purple-600 bg-purple-50/70 text-purple-950 font-bold ring-2 ring-purple-500'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>3. Deferir 2ª Prorrogação (+30d - Limite)</span>
+                    <span className="text-[10px] font-normal text-slate-500 mt-1">
+                      Última extensão em caráter improrrogável.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleMudarCenario('INDEFERIMENTO_ARQUIVAMENTO')}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition flex flex-col justify-between ${
+                      cenarioSelecionado === 'INDEFERIMENTO_ARQUIVAMENTO'
+                        ? 'border-rose-600 bg-rose-50/70 text-rose-950 font-bold ring-2 ring-rose-500'
+                        : 'border-rose-200 bg-rose-50/20 text-rose-900 hover:bg-rose-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1">
+                      <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                      4. Indeferimento de Prazo + Aviso de Arquivamento
+                    </span>
+                    <span className="text-[10px] font-normal text-rose-700 mt-1">
+                      Comunicação externa: esgotamento de prorrogações e envio para arquivar.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleMudarCenario('DESPACHO_DEVOLUCAO_ARQUIVAMENTO')}
+                    className={`sm:col-span-2 p-2.5 rounded-xl border text-left text-xs transition flex flex-col justify-between ${
+                      cenarioSelecionado === 'DESPACHO_DEVOLUCAO_ARQUIVAMENTO'
+                        ? 'border-slate-900 bg-slate-100 text-slate-950 font-bold ring-2 ring-slate-800'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1 font-bold">
+                      <ArrowRightLeft className="w-3.5 h-3.5 text-slate-700" />
+                      5. Cota / Parecer de Devolução ao Setor com Sugestão de Arquivamento
+                    </span>
+                    <span className="text-[10px] font-normal text-slate-500 mt-0.5">
+                      Despacho interno encaminhando os autos para a {processoSelecionado.setor_origem} sugerindo o arquivamento definitivo.
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    Texto do Despacho / Comunicação (Você pode revisar ou ajustar antes de copiar):
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setTextoPreview(gerarTextoPorCenario(processoSelecionado, cenarioSelecionado))}
+                    className="text-[11px] text-purple-600 hover:underline"
+                  >
+                    Restaurar Texto Original
+                  </button>
+                </div>
+                <textarea
+                  rows={11}
+                  value={textoPreview}
+                  onChange={e => setTextoPreview(e.target.value)}
+                  className="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono bg-slate-50/50 text-slate-800 leading-relaxed focus:bg-white focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                {copiadoPreview ? '✓ Texto copiado com sucesso para a área de transferência!' : 'Revise o conteúdo e copie para colar no SIS-SEDUR.'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalVisualizarAberto(false)}
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg transition"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopiarPreview}
+                  className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-sm"
+                >
+                  {copiadoPreview ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                  {copiadoPreview ? 'Copiado!' : 'Copiar Texto Selecionado'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE CADASTRO / EDIÇÃO */}
       {modalAberto && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                {editandoId ? <Pencil className="w-4 h-4 text-blue-600" /> : <SendHorizontal className="w-4 h-4 text-emerald-600" />}
+                {editandoId ? <Pencil className="w-4 h-4 text-purple-600" /> : <SendHorizontal className="w-4 h-4 text-emerald-600" />}
                 {editandoId ? 'Editar Comunicação Externa' : 'Cadastrar Comunicação Externa no SIS-SEDUR'}
               </h3>
               <button
@@ -850,7 +1070,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
             <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Processo */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Número do Processo SIS-SEDUR *
@@ -864,7 +1083,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
                   />
                 </div>
 
-                {/* Tipo de Assunto Ambiental */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Tipo de Assunto Ambiental *
@@ -882,7 +1100,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
                   </select>
                 </div>
 
-                {/* Interessado */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Interessado / Razão Social *
@@ -896,7 +1113,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
                   />
                 </div>
 
-                {/* Setor de Origem */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Setor de Origem (Para devolver se expirar) *
@@ -913,7 +1129,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
                   </select>
                 </div>
 
-                {/* Controle de Prorrogações Concedidas */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Prorrogações Concedidas
@@ -929,7 +1144,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
                   </select>
                 </div>
 
-                {/* Data de Envio */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Data de Envio da Comunicação *
@@ -942,7 +1156,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
                   />
                 </div>
 
-                {/* Prazo em dias */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Prazo Concedido ao Requerente *
@@ -963,7 +1176,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
               {novaQtdProrrogacoes >= 2 && (
                 <div className="p-3 bg-amber-50 border-l-4 border-amber-500 rounded text-amber-900 text-xs">
-                  <strong>Atenção:</strong> Processo no limite regulamentar (2 prorrogações). Os botões de cópia gerarão a notificação de indeferimento de prazo e o despacho sugerindo arquivamento.
+                  <strong>Atenção:</strong> Processo no limite regulamentar (2 prorrogações). Os modelos já estarão pré-configurados com a sugestão de arquivamento.
                 </div>
               )}
 
