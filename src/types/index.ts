@@ -59,3 +59,26 @@ export interface ProcessoFormData {
   possui_atividade_industrial: boolean;
   declaracao_artesanal_bancada: boolean;
 }
+
+// TIPOS PARA O MÓDULO DE COMUNICAÇÃO EXTERNA E PRAZOS
+export interface DocumentoNotificacao {
+  id: string;
+  nome: string;
+  entregue: boolean;
+  data_entrega?: string; // YYYY-MM-DD
+}
+
+export type StatusPrazo = 'EM_ANDAMENTO' | 'PRAZO_CRITICO' | 'EXPIRADO' | 'CUMPRIDO' | 'DEVOLVIDO';
+
+export interface ComunicacaoExterna {
+  id: string;
+  numero_processo: string;
+  interessado: string;
+  setor_origem: string; // Ex: CLA, CLU, GABINETE
+  data_envio: string; // Data início (YYYY-MM-DD)
+  prazo_dias: number; // Ex: 30, 60
+  data_limite: string; // Prazo fatal (YYYY-MM-DD)
+  documentos: DocumentoNotificacao[];
+  observacoes?: string;
+  created_at: string;
+}
