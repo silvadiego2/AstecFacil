@@ -11,13 +11,16 @@ import {
   Trash2, 
   Search, 
   X,
-  ShieldCheck
+  ShieldCheck,
+  Clock,
+  Compass
 } from 'lucide-react';
 import { ProcessoFormData } from './types';
 import { Step1Identificacao } from './components/Step1Identificacao';
 import { Step2Enquadramento } from './components/Step2Enquadramento';
 import { Step3Documentos } from './components/Step3Documentos';
 import { Step4Parecer } from './components/Step4Parecer';
+import { PainelComunicacaoExterna } from './components/PainelComunicacaoExterna';
 import { listarProcessosSalvos, excluirProcesso } from './services/api';
 
 const ESTADO_INICIAL: ProcessoFormData = {
@@ -45,6 +48,9 @@ const ESTADO_INICIAL: ProcessoFormData = {
 };
 
 export default function App() {
+  // Controle de Módulo: 'TRIAGEM' ou 'COMUNICACAO_EXTERNA'
+  const [moduloAtivo, setModuloAtivo] = useState<'TRIAGEM' | 'COMUNICACAO_EXTERNA'>('TRIAGEM');
+
   const [etapaAtual, setEtapaAtual] = useState<number>(1);
   const [formData, setFormData] = useState<ProcessoFormData>(ESTADO_INICIAL);
   const [modalHistorico, setModalHistorico] = useState<boolean>(false);
@@ -103,6 +109,7 @@ export default function App() {
       declaracao_artesanal_bancada: false,
     });
     setModalHistorico(false);
+    setModuloAtivo('TRIAGEM');
     setEtapaAtual(4);
   };
 
@@ -115,6 +122,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
+      {/* Header Governamental */}
       <header className="bg-slate-900 text-white border-b-4 border-emerald-600 shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -124,111 +132,156 @@ export default function App() {
             <div>
               <h1 className="text-xl font-bold tracking-tight">ASTEC Fácil - SEDUR Camaçari</h1>
               <p className="text-xs text-slate-300">
-                Assessoria Técnica Ambiental Municipal | Triagem de DLA, LAS, Inexigibilidade e Renovação
+                Assessoria Técnica Ambiental Municipal | Triagem e Gestão de Prazos SIS-SEDUR
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setModalHistorico(true)}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg flex items-center gap-2 border border-slate-700 transition"
-          >
-            <History className="w-4 h-4 text-emerald-400" />
-            Processos Salvos
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Navegador de Módulos (Aba Triagem vs Comunicação Externa) */}
+            <div className="bg-slate-800 p-1 rounded-xl border border-slate-700 flex items-center">
+              <button
+                type="button"
+                onClick={() => setModuloAtivo('TRIAGEM')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                  moduloAtivo === 'TRIAGEM'
+                    ? 'bg-emerald-600 text-white shadow'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5" />
+                Triagem & Pareceres
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModuloAtivo('COMUNICACAO_EXTERNA')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                  moduloAtivo === 'COMUNICACAO_EXTERNA'
+                    ? 'bg-emerald-600 text-white shadow'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Comunicação Externa & Prazos
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setModalHistorico(true)}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 transition"
+              title="Processos Salvos no Banco"
+            >
+              <History className="w-4 h-4 text-emerald-400" />
+            </button>
+          </div>
         </div>
       </header>
 
+      {/* Conteúdo Principal */}
       <main className="max-w-6xl w-full mx-auto px-4 py-8 flex-1">
-        <div className="bg-white rounded-2xl p-4 mb-8 shadow-sm border border-slate-200">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {steps.map(s => {
-              const Icon = s.icon;
-              const ativo = etapaAtual === s.num;
-              const concluido = etapaAtual > s.num;
-              return (
+        {moduloAtivo === 'COMUNICACAO_EXTERNA' ? (
+          <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-200">
+            <PainelComunicacaoExterna />
+          </div>
+        ) : (
+          <>
+            {/* Wizard das 4 Etapas */}
+            <div className="bg-white rounded-2xl p-4 mb-8 shadow-sm border border-slate-200">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {steps.map(s => {
+                  const Icon = s.icon;
+                  const ativo = etapaAtual === s.num;
+                  const concluido = etapaAtual > s.num;
+                  return (
+                    <button
+                      key={s.num}
+                      type="button"
+                      onClick={() => setEtapaAtual(s.num)}
+                      className={`p-3 rounded-xl flex items-center gap-3 text-left transition ${
+                        ativo
+                          ? 'bg-slate-900 text-white shadow'
+                          : concluido
+                          ? 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                          : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
+                          ativo
+                            ? 'bg-emerald-500 text-slate-950'
+                            : concluido
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {s.num}
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-bold tracking-wider opacity-75">
+                          Etapa {s.num}
+                        </div>
+                        <div className="text-xs font-semibold">{s.label}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Formulário da Etapa Ativa */}
+            <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-200">
+              {etapaAtual === 1 && (
+                <Step1Identificacao formData={formData} setFormData={setFormData} />
+              )}
+              {etapaAtual === 2 && (
+                <Step2Enquadramento formData={formData} setFormData={setFormData} />
+              )}
+              {etapaAtual === 3 && (
+                <Step3Documentos formData={formData} setFormData={setFormData} />
+              )}
+              {etapaAtual === 4 && (
+                <Step4Parecer
+                  formData={formData}
+                  setFormData={setFormData}
+                  onLimparFormulario={() => {
+                    setFormData(ESTADO_INICIAL);
+                    setEtapaAtual(1);
+                  }}
+                  onIrParaComunicacaoExterna={() => setModuloAtivo('COMUNICACAO_EXTERNA')}
+                />
+              )}
+
+              {/* Botões de Navegação Inferior */}
+              <div className="mt-8 pt-6 border-t border-slate-200 flex items-center justify-between">
                 <button
-                  key={s.num}
                   type="button"
-                  onClick={() => setEtapaAtual(s.num)}
-                  className={`p-3 rounded-xl flex items-center gap-3 text-left transition ${
-                    ativo
-                      ? 'bg-slate-900 text-white shadow'
-                      : concluido
-                      ? 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                  }`}
+                  disabled={etapaAtual === 1}
+                  onClick={() => setEtapaAtual(p => Math.max(1, p - 1))}
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition disabled:opacity-30 disabled:pointer-events-none"
                 >
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
-                      ativo
-                        ? 'bg-emerald-500 text-slate-950'
-                        : concluido
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {s.num}
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase font-bold tracking-wider opacity-75">
-                      Etapa {s.num}
-                    </div>
-                    <div className="text-xs font-semibold">{s.label}</div>
-                  </div>
+                  <ChevronLeft className="w-4 h-4" />
+                  Anterior
                 </button>
-              );
-            })}
-          </div>
-        </div>
 
-        <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-200">
-          {etapaAtual === 1 && (
-            <Step1Identificacao formData={formData} setFormData={setFormData} />
-          )}
-          {etapaAtual === 2 && (
-            <Step2Enquadramento formData={formData} setFormData={setFormData} />
-          )}
-          {etapaAtual === 3 && (
-            <Step3Documentos formData={formData} setFormData={setFormData} />
-          )}
-          {etapaAtual === 4 && (
-            <Step4Parecer
-              formData={formData}
-              setFormData={setFormData}
-              onLimparFormulario={() => {
-                setFormData(ESTADO_INICIAL);
-                setEtapaAtual(1);
-              }}
-            />
-          )}
-
-          <div className="mt-8 pt-6 border-t border-slate-200 flex items-center justify-between">
-            <button
-              type="button"
-              disabled={etapaAtual === 1}
-              onClick={() => setEtapaAtual(p => Math.max(1, p - 1))}
-              className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition disabled:opacity-30 disabled:pointer-events-none"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              Anterior
-            </button>
-
-            {etapaAtual < 4 && (
-              <button
-                type="button"
-                onClick={() => setEtapaAtual(p => Math.min(4, p + 1))}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center gap-1.5 transition shadow"
-              >
-                Próxima Etapa
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
+                {etapaAtual < 4 && (
+                  <button
+                    type="button"
+                    onClick={() => setEtapaAtual(p => Math.min(4, p + 1))}
+                    className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center gap-1.5 transition shadow"
+                  >
+                    Próxima Etapa
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </main>
 
+      {/* Modal de Histórico de Processos */}
       {modalHistorico && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200">
@@ -277,12 +330,8 @@ export default function App() {
                         <span className="font-mono font-bold text-sm text-slate-900">
                           {proc.numero_processo}
                         </span>
-                        <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
-                          proc.modalidade === 'RENOVACAO_LAS' 
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}>
-                          {proc.modalidade === 'RENOVACAO_LAS' ? 'RENOVAÇÃO LAS' : proc.modalidade}
+                        <span className="text-xs px-2 py-0.5 rounded font-semibold bg-emerald-100 text-emerald-800">
+                          {proc.modalidade}
                         </span>
                       </div>
                       <div className="text-sm font-semibold text-slate-700 mt-1">
