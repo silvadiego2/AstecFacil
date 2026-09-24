@@ -418,6 +418,9 @@ Assessoria Técnica - ASTEC / SEDUR`;
     salvarLista(comunicacoes.filter(c => c.id !== id));
   };
 
+  // =========================================================================
+  // EXPORTAÇÃO PERSONALIZADA PARA EXCEL (.XLS FORMATADO PARA IMPRESSÃO)
+  // =========================================================================
   const handleExportarExcel = () => {
     if (comunicacoes.length === 0) {
       alert('Não há processos cadastrados para exportar.');
@@ -426,87 +429,91 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
     const dataHoje = new Date().toISOString().split('T')[0];
 
+    // 1. Organização dos dados por data do prazo fatal (ordem cronológica crescente)
+    const listaOrdenada = [...comunicacoes].sort((a, b) => {
+      if (!a.data_limite) return 1;
+      if (!b.data_limite) return -1;
+      return a.data_limite.localeCompare(b.data_limite);
+    });
+
+    // 2. Formatação com letras (a), (b), (c)... em cada documento
+    const formatarDocsComLetras = (docs: DocumentoNotificacao[]): string => {
+      if (!docs || docs.length === 0) return 'Nenhum documento especificado';
+      return docs.map((d, i) => {
+        let letra = '';
+        if (i < 26) {
+          letra = String.fromCharCode(97 + i); // a, b, c...
+        } else {
+          const p = String.fromCharCode(97 + Math.floor(i / 26) - 1);
+          const s = String.fromCharCode(97 + (i % 26));
+          letra = `${p}${s}`;
+        }
+        return `(${letra}) ${d.nome}`;
+      }).join('<br style="mso-data-placement:same-cell;" />');
+    };
+
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <title>Relatório de Prazos e Comunicação Externa</title>
         <style>
-          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 11px; }
-          th { background-color: #0f172a; color: #ffffff; padding: 8px; border: 1px solid #cbd5e1; text-align: left; }
-          td { padding: 6px; border: 1px solid #cbd5e1; vertical-align: top; }
-          .vencido { background-color: #fee2e2; color: #991b1b; font-weight: bold; }
-          .critico { background-color: #fef3c7; color: #92400e; font-weight: bold; }
-          .cumprido { background-color: #d1fae5; color: #065f46; font-weight: bold; }
-          .em-prazo { background-color: #f0fdf4; color: #166534; }
+          @page { size: landscape; margin: 12mm; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1e293b; background-color: #ffffff; }
+          h2 { margin-bottom: 4px; font-size: 15px; color: #0f172a; }
+          p { margin-top: 0; margin-bottom: 12px; font-size: 11px; color: #64748b; }
+          table { border-collapse: collapse; width: 100%; mso-displayed-decimal-separator: ","; mso-displayed-thousand-separator: "."; }
+          th { background-color: #0f172a; color: #ffffff; padding: 9px 10px; border: 1px solid #475569; font-size: 11px; font-weight: bold; text-align: left; }
+          th.centro { text-align: center; }
+          td { padding: 8px 10px; border: 1px solid #cbd5e1; font-size: 11px; vertical-align: top; }
+          td.centro { text-align: center; }
+          td.processo { font-family: Consolas, monospace; font-weight: bold; white-space: nowrap; }
+          td.data { font-family: Consolas, monospace; text-align: center; white-space: nowrap; }
+          td.prazo-fatal { font-family: Consolas, monospace; text-align: center; font-weight: bold; color: #991b1b; white-space: nowrap; }
+          .linha-impar { background-color: #ffffff; }
+          .linha-par { background-color: #f1f5f9; }
+          @media print {
+            body { margin: 0; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+          }
         </style>
       </head>
       <body>
         <h2>SEDUR Camaçari - Controle de Comunicação Externa e Prazos (ASTEC)</h2>
-        <p>Relatório gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+        <p>Relatório gerado em: ${new Date().toLocaleString('pt-BR')} | Total de processos: ${listaOrdenada.length} (Organizados por data do Prazo Fatal)</p>
         <table>
           <thead>
             <tr>
-              <th>Item #</th>
-              <th>Processo SIS-SEDUR</th>
-              <th>Tipo de Assunto Ambiental</th>
-              <th>Interessado / Requerente</th>
-              <th>Setor de Devolução</th>
-              <th>Prorrogações</th>
-              <th>Data Envio</th>
-              <th>Prazo (Dias)</th>
-              <th>Prazo Fatal</th>
-              <th>Situação do Prazo</th>
+              <th class="centro" style="width: 50px;">Item</th>
+              <th style="width: 170px;">Processo</th>
+              <th style="width: 190px;">Tipo de Assunto Ambiental</th>
+              <th style="width: 220px;">Interessado / Requerente</th>
               <th>Documentos Solicitados</th>
-              <th>Documentos Entregues</th>
-              <th>Documentos Pendentes</th>
-              <th>Ação Recomendada</th>
+              <th class="centro" style="width: 115px;">Data Envio Comunicação</th>
+              <th class="centro" style="width: 115px;">Prazo Fatal</th>
             </tr>
           </thead>
           <tbody>
     `;
 
-    comunicacoes.forEach((c, idx) => {
-      const dias = calcularDiasRestantes(c.data_limite);
-      const todosEntregues = c.documentos.length > 0 && c.documentos.every(d => d.entregue);
-      
-      let classeCss = 'em-prazo';
-      let situacaoTexto = `Em prazo (${dias} dias restantes)`;
-      let acaoRecomendada = 'Aguardar prazo do requerente';
-
-      if (todosEntregues) {
-        classeCss = 'cumprido';
-        situacaoTexto = 'Cumprido integralmente';
-        acaoRecomendada = `Prosseguir análise técnica (${c.setor_origem})`;
-      } else if (dias < 0) {
-        classeCss = 'vencido';
-        situacaoTexto = `PRAZO VENCIDO (expirado há ${Math.abs(dias)} dias)`;
-        acaoRecomendada = `DEVOLVER AO SETOR (${c.setor_origem}) P/ ARQUIVAMENTO`;
-      } else if (dias <= 7) {
-        classeCss = 'critico';
-        situacaoTexto = `PRAZO CRÍTICO (faltam ${dias} dias)`;
-        acaoRecomendada = 'Monitorar encerramento de prazo';
-      }
-
-      const docsSolicitados = c.documentos.map(d => d.nome).join('; ');
-      const docsEntregues = c.documentos.filter(d => d.entregue).map(d => `${d.nome} (em ${d.data_entrega || 'data n/i'})`).join('; ') || 'Nenhum';
-      const docsPendentes = c.documentos.filter(d => !d.entregue).map(d => d.nome).join('; ') || 'Nenhum (Tudo entregue)';
+    listaOrdenada.forEach((c, idx) => {
+      const classeLinha = idx % 2 === 0 ? 'linha-impar' : 'linha-par';
+      const itemNumero = `#${String(idx + 1).padStart(2, '0')}`;
+      const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
+      const docsComLetras = formatarDocsComLetras(c.documentos);
+      const dataEnvioFmt = c.data_envio ? c.data_envio.split('-').reverse().join('/') : '-';
+      const dataLimiteFmt = c.data_limite ? c.data_limite.split('-').reverse().join('/') : '-';
 
       html += `
-        <tr>
-          <td><b>#${String(idx + 1).padStart(2, '0')}</b></td>
-          <td><b>${c.numero_processo}</b></td>
-          <td>${obterDescricaoAssunto(c.tipo_assunto)}</td>
-          <td>${c.interessado}</td>
-          <td>${c.setor_origem}</td>
-          <td>${c.qtd_prorrogacoes || 0} prorrogação(ões)</td>
-          <td>${c.data_envio.split('-').reverse().join('/')}</td>
-          <td>${c.prazo_dias} dias</td>
-          <td><b>${c.data_limite.split('-').reverse().join('/')}</b></td>
-          <td class="${classeCss}">${situacaoTexto}</td>
-          <td>${docsSolicitados}</td>
-          <td>${docsEntregues}</td>
-          <td>${docsPendentes}</td>
-          <td><b>${acaoRecomendada}</b></td>
+        <tr class="${classeLinha}">
+          <td class="centro" style="font-weight: bold;">${itemNumero}</td>
+          <td class="processo">${c.numero_processo}</td>
+          <td>${assuntoStr}</td>
+          <td><b>${c.interessado}</b></td>
+          <td style="line-height: 1.45;">${docsComLetras}</td>
+          <td class="data">${dataEnvioFmt}</td>
+          <td class="prazo-fatal">${dataLimiteFmt}</td>
         </tr>
       `;
     });
@@ -522,7 +529,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `SEDUR_Controle_Comunicacao_Externa_${dataHoje}.xls`;
+    link.download = `SEDUR_Relatorio_Prazos_${dataHoje}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -709,9 +716,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
             const prorrogacoes = c.qtd_prorrogacoes || 0;
             const numeroSequencial = String(index + 1).padStart(2, '0');
 
-            // =========================================================================
-            // CORES INVERTIDAS: Cinza em repouso e Roxo vivo ao passar o mouse
-            // =========================================================================
             let estiloCard = 'border-l-[6px] border-l-slate-300 border-slate-200 bg-white hover:border-l-purple-600 hover:border-purple-300 hover:bg-purple-50/10 transition-all duration-200';
 
             if (todosEntregues) {
@@ -754,7 +758,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
                     )}
                   </div>
 
-                  {/* Status / Alerta */}
                   <div className="flex items-center gap-2 self-start sm:self-auto">
                     {todosEntregues ? (
                       <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
