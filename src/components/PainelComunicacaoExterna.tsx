@@ -46,6 +46,32 @@ export const TIPOS_ASSUNTOS_AMBIENTAIS: TipoAssuntoItem[] = [
   { id: 'REGULARIZACAO', sigla: 'LOR', nome: 'Licença de Regularização / Operação Corretiva', categoria: 'Especiais' },
 ];
 
+/**
+ * Retorna cores visuais exclusivas para a badge de cada tipo de licença
+ */
+export function obterEstiloAssunto(siglaOrId?: string): { bg: string; text: string; border: string } {
+  switch (siglaOrId) {
+    case 'LP':
+      return { bg: 'bg-sky-50', text: 'text-sky-800', border: 'border-sky-300' };
+    case 'LI':
+      return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-300' };
+    case 'LO':
+      return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-300' };
+    case 'LAS':
+    case 'LAU':
+      return { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-300' };
+    case 'RENOVACAO':
+      return { bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-300' };
+    case 'DISPENSA':
+    case 'INEXIGIBILIDADE':
+      return { bg: 'bg-teal-50', text: 'text-teal-800', border: 'border-teal-300' };
+    case 'AUTORIZACAO':
+      return { bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-300' };
+    default:
+      return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-300' };
+  }
+}
+
 const STORAGE_KEY = 'astec_comunicacoes_externas';
 
 export function calcularDataLimite(dataInicio: string, dias: number): string {
@@ -71,7 +97,7 @@ export const PainelComunicacaoExterna: React.FC = () => {
   
   // Modal de Cadastro/Edição
   const [modalAberto, setModalAberto] = useState(false);
-  const [editandoId, setEditandoId] = useState<string | null>(null); // ID do processo sendo editado (null se for novo)
+  const [editandoId, setEditandoId] = useState<string | null>(null);
 
   const [novoProcesso, setNovoProcesso] = useState('');
   const [novoInteressado, setNovoInteressado] = useState('');
@@ -139,7 +165,6 @@ export const PainelComunicacaoExterna: React.FC = () => {
     setModalAberto(true);
   };
 
-  // Criação ou Edição de Notificação
   const handleSalvarComunicacao = () => {
     if (!novoProcesso.trim() || !novoInteressado.trim()) {
       alert('Informe o Número do Processo e o Interessado.');
@@ -154,7 +179,6 @@ export const PainelComunicacaoExterna: React.FC = () => {
     const dataLimiteCalculada = calcularDataLimite(novaDataEnvio, novoPrazoDias);
 
     if (editandoId) {
-      // MODO EDIÇÃO: Atualiza o registro existente preservando o status de entrega dos documentos já conferidos
       const itemExistente = comunicacoes.find(c => c.id === editandoId);
       const docsAntigos = itemExistente?.documentos || [];
 
@@ -189,7 +213,6 @@ export const PainelComunicacaoExterna: React.FC = () => {
 
       salvarLista(listaAtualizada);
     } else {
-      // MODO CRIAÇÃO: Adiciona um novo acompanhamento
       const docsFormatados: DocumentoNotificacao[] = linhasDocs.length > 0
         ? linhasDocs.map((nome, idx) => ({
             id: `doc-${Date.now()}-${idx}`,
@@ -220,7 +243,6 @@ export const PainelComunicacaoExterna: React.FC = () => {
     limparFormulario();
   };
 
-  // Alternar entrega de documento individual
   const handleToggleDoc = (comId: string, docId: string) => {
     const hojeStr = new Date().toISOString().split('T')[0];
     const atualizadas = comunicacoes.map(c => {
@@ -250,7 +272,6 @@ export const PainelComunicacaoExterna: React.FC = () => {
     return achado ? achado.nome : siglaOrId;
   };
 
-  // Copia mensagem de notificação externa
   const handleCopiarMensagemSisSedur = (c: typeof comunicacoes[0]) => {
     const pendentes = c.documentos.filter(d => !d.entregue).map((d, i) => `  ${i + 1}. ${d.nome}`).join('\n');
     const dataLimiteFmt = c.data_limite.split('-').reverse().join('/');
@@ -297,7 +318,6 @@ Prefeitura Municipal de Camaçari`;
     setTimeout(() => setCopiadoId(null), 3000);
   };
 
-  // Copia parecer/despacho interno sugerindo arquivamento
   const handleCopiarDespachoDevolucao = (c: typeof comunicacoes[0]) => {
     const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
     const dataHojeFmt = new Date().toLocaleDateString('pt-BR');
@@ -327,7 +347,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
     setTimeout(() => setCopiadoDespachoId(null), 3000);
   };
 
-  // EXPORTAÇÃO PARA EXCEL (.XLS)
   const handleExportarExcel = () => {
     if (comunicacoes.length === 0) {
       alert('Não há processos cadastrados para exportar.');
@@ -356,6 +375,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         <table>
           <thead>
             <tr>
+              <th>Item #</th>
               <th>Processo SIS-SEDUR</th>
               <th>Tipo de Assunto Ambiental</th>
               <th>Interessado / Requerente</th>
@@ -374,7 +394,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
           <tbody>
     `;
 
-    comunicacoes.forEach(c => {
+    comunicacoes.forEach((c, idx) => {
       const dias = calcularDiasRestantes(c.data_limite);
       const todosEntregues = c.documentos.length > 0 && c.documentos.every(d => d.entregue);
       
@@ -402,6 +422,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
       html += `
         <tr>
+          <td><b>#${String(idx + 1).padStart(2, '0')}</b></td>
           <td><b>${c.numero_processo}</b></td>
           <td>${obterDescricaoAssunto(c.tipo_assunto)}</td>
           <td>${c.interessado}</td>
@@ -436,7 +457,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
     document.body.removeChild(link);
   };
 
-  // Resumo (KPIs)
+  // KPIs
   const total = comunicacoes.length;
   const cumpridos = comunicacoes.filter(c => c.documentos.length > 0 && c.documentos.every(d => d.entregue)).length;
   const expirados = comunicacoes.filter(c => {
@@ -514,7 +535,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         <div 
           onClick={() => setFiltroStatus('TODOS')}
           className={`p-4 rounded-xl border cursor-pointer transition ${
-            filtroStatus === 'TODOS' ? 'border-slate-900 bg-white ring-2 ring-slate-800' : 'bg-slate-50 border-slate-200 hover:bg-white'
+            filtroStatus === 'TODOS' ? 'border-slate-900 bg-white ring-2 ring-slate-800 shadow-sm' : 'bg-slate-50 border-slate-200 hover:bg-white'
           }`}
         >
           <div className="text-xs font-medium text-slate-500">Total Monitorados</div>
@@ -524,7 +545,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         <div 
           onClick={() => setFiltroStatus('CRITICOS')}
           className={`p-4 rounded-xl border cursor-pointer transition ${
-            filtroStatus === 'CRITICOS' ? 'border-amber-500 bg-white ring-2 ring-amber-400' : 'bg-amber-50/50 border-amber-200 hover:bg-white'
+            filtroStatus === 'CRITICOS' ? 'border-amber-500 bg-white ring-2 ring-amber-400 shadow-sm' : 'bg-amber-50/50 border-amber-200 hover:bg-white'
           }`}
         >
           <div className="text-xs font-medium text-amber-800 flex items-center gap-1">
@@ -536,7 +557,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         <div 
           onClick={() => setFiltroStatus('VENCIDOS')}
           className={`p-4 rounded-xl border cursor-pointer transition ${
-            filtroStatus === 'VENCIDOS' ? 'border-rose-500 bg-white ring-2 ring-rose-400' : 'bg-rose-50/50 border-rose-200 hover:bg-white'
+            filtroStatus === 'VENCIDOS' ? 'border-rose-500 bg-white ring-2 ring-rose-400 shadow-sm' : 'bg-rose-50/50 border-rose-200 hover:bg-white'
           }`}
         >
           <div className="text-xs font-medium text-rose-800 flex items-center gap-1">
@@ -548,7 +569,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         <div 
           onClick={() => setFiltroStatus('CUMPRIDOS')}
           className={`p-4 rounded-xl border cursor-pointer transition ${
-            filtroStatus === 'CUMPRIDOS' ? 'border-emerald-500 bg-white ring-2 ring-emerald-400' : 'bg-emerald-50/50 border-emerald-200 hover:bg-white'
+            filtroStatus === 'CUMPRIDOS' ? 'border-emerald-500 bg-white ring-2 ring-emerald-400 shadow-sm' : 'bg-emerald-50/50 border-emerald-200 hover:bg-white'
           }`}
         >
           <div className="text-xs font-medium text-emerald-800 flex items-center gap-1">
@@ -567,7 +588,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
             placeholder="Buscar por número do processo, interessado, tipo de assunto ou documento..."
             value={busca}
             onChange={e => setBusca(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-slate-600"
+            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-slate-600 shadow-sm"
           />
         </div>
 
@@ -595,7 +616,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         </div>
       </div>
 
-      {/* Lista de Processos em Diligência */}
+      {/* LISTA DE PROCESSOS COM VISUALIZAÇÃO OTIMIZADA */}
       <div className="space-y-4">
         {listaFiltrada.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 p-6">
@@ -608,72 +629,81 @@ Assessoria Técnica - ASTEC / SEDUR`;
             </p>
           </div>
         ) : (
-          listaFiltrada.map(c => {
+          listaFiltrada.map((c, index) => {
             const dias = calcularDiasRestantes(c.data_limite);
             const todosEntregues = c.documentos.length > 0 && c.documentos.every(d => d.entregue);
             const entreguesQtd = c.documentos.filter(d => d.entregue).length;
             const assuntoNome = obterDescricaoAssunto(c.tipo_assunto);
+            const estiloAssunto = obterEstiloAssunto(c.tipo_assunto);
             const prorrogacoes = c.qtd_prorrogacoes || 0;
+            const numeroSequencial = String(index + 1).padStart(2, '0');
+
+            // Definição da borda lateral e tom de fundo conforme o status
+            let estiloCard = 'border-l-[6px] border-l-indigo-500 border-slate-200 bg-white hover:border-slate-300';
+            if (todosEntregues) {
+              estiloCard = 'border-l-[6px] border-l-emerald-500 border-emerald-300 bg-emerald-50/20';
+            } else if (dias < 0) {
+              estiloCard = 'border-l-[6px] border-l-rose-500 border-rose-300 bg-rose-50/20';
+            } else if (dias <= 7) {
+              estiloCard = 'border-l-[6px] border-l-amber-500 border-amber-300 bg-amber-50/20';
+            }
 
             return (
               <div 
                 key={c.id}
-                className={`p-5 bg-white rounded-2xl border transition shadow-sm space-y-4 ${
-                  todosEntregues
-                    ? 'border-emerald-300'
-                    : dias < 0
-                    ? 'border-rose-300 ring-1 ring-rose-200 bg-rose-50/20'
-                    : dias <= 7
-                    ? 'border-amber-300 ring-1 ring-amber-200 bg-amber-50/20'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
+                className={`rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden ${estiloCard}`}
               >
-                {/* Linha Superior: Processo, Assunto, Setor e Alertas */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono font-bold text-sm text-slate-900">
-                        {c.numero_processo}
+                {/* Cabeçalho do Card com Numeração Sequencial */}
+                <div className="bg-slate-50/80 border-b border-slate-100 px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Número do Card */}
+                    <span className="px-2.5 py-0.5 rounded-md text-xs font-black font-mono bg-slate-900 text-white tracking-wider shadow-sm">
+                      #{numeroSequencial}
+                    </span>
+
+                    {/* Número do Processo */}
+                    <span className="font-mono font-bold text-sm text-slate-900">
+                      {c.numero_processo}
+                    </span>
+
+                    {/* Badge Colorida por Tipo de Assunto Ambiental */}
+                    <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border flex items-center gap-1 shadow-2xs ${estiloAssunto.bg} ${estiloAssunto.text} ${estiloAssunto.border}`}>
+                      <Tag className="w-3 h-3" />
+                      {assuntoNome}
+                    </span>
+
+                    {/* Setor de Origem */}
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-white text-slate-700 border border-slate-200">
+                      Origem: {c.setor_origem}
+                    </span>
+
+                    {/* Badge de Prorrogações */}
+                    {prorrogacoes > 0 && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                        {prorrogacoes}ª Prorrogação (+30d)
                       </span>
-                      {/* Badge do Tipo de Assunto Ambiental */}
-                      <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                        <Tag className="w-3 h-3" />
-                        {assuntoNome}
-                      </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                        Origem: {c.setor_origem}
-                      </span>
-                      {prorrogacoes > 0 && (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                          {prorrogacoes}ª Prorrogação (+30d)
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs font-semibold text-slate-700 mt-1 flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                      {c.interessado}
-                    </div>
+                    )}
                   </div>
 
                   {/* Badge de Status / Prazo Fatal */}
                   <div className="flex items-center gap-2 self-start sm:self-auto">
                     {todosEntregues ? (
-                      <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                      <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         Cumprido ({entreguesQtd}/{c.documentos.length})
                       </span>
                     ) : dias < 0 ? (
-                      <span className="px-3 py-1.5 bg-rose-100 text-rose-950 border border-rose-300 rounded-lg text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                      <span className="px-3 py-1.5 bg-rose-100 text-rose-950 border border-rose-300 rounded-lg text-xs font-bold flex items-center gap-1.5 animate-pulse shadow-2xs">
                         <XCircle className="w-4 h-4 text-rose-600" />
                         Vencido há {Math.abs(dias)} dias! Devolver à {c.setor_origem}
                       </span>
                     ) : dias <= 7 ? (
-                      <span className="px-3 py-1.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                      <span className="px-3 py-1.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
                         <AlertTriangle className="w-4 h-4 text-amber-600" />
                         Atenção: Vence em {dias} dias!
                       </span>
                     ) : (
-                      <span className="px-3 py-1 bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                      <span className="px-3 py-1 bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
                         <Clock className="w-3.5 h-3.5 text-slate-500" />
                         Faltam {dias} dias
                       </span>
@@ -681,108 +711,114 @@ Assessoria Técnica - ASTEC / SEDUR`;
                   </div>
                 </div>
 
-                {/* Linha Intermediária: Datas e Prazos */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100 font-mono">
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">DATA ENVIO:</span>
-                    <span className="font-semibold text-slate-700">{c.data_envio.split('-').reverse().join('/')}</span>
+                {/* Corpo do Card */}
+                <div className="p-5 space-y-4">
+                  {/* Interessado */}
+                  <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-slate-400" />
+                    <span>Requerente / Interessado:</span>
+                    <span className="text-slate-950 font-bold text-sm">{c.interessado}</span>
                   </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">PRAZO TOTAL:</span>
-                    <span className="font-semibold text-slate-700">{c.prazo_dias} dias corridos</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">PRAZO FATAL:</span>
-                    <span className="font-bold text-rose-700">{c.data_limite.split('-').reverse().join('/')}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">DOCUMENTOS:</span>
-                    <span className="font-semibold text-slate-700">{entreguesQtd} de {c.documentos.length} entregues</span>
-                  </div>
-                </div>
 
-                {/* Lista de Documentos Solicitados */}
-                <div className="space-y-1.5">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Documentos Exigidos na Notificação (Clique para marcar entrega):
+                  {/* Linha de Datas e Prazos */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-slate-50/90 p-2.5 rounded-xl border border-slate-200 font-mono">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">DATA ENVIO:</span>
+                      <span className="font-semibold text-slate-700">{c.data_envio.split('-').reverse().join('/')}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">PRAZO TOTAL:</span>
+                      <span className="font-semibold text-slate-700">{c.prazo_dias} dias corridos</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">PRAZO FATAL:</span>
+                      <span className="font-bold text-rose-700">{c.data_limite.split('-').reverse().join('/')}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">DOCUMENTOS:</span>
+                      <span className="font-semibold text-slate-700">{entreguesQtd} de {c.documentos.length} entregues</span>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {c.documentos.map(doc => (
-                      <div
-                        key={doc.id}
-                        onClick={() => handleToggleDoc(c.id, doc.id)}
-                        className={`p-2 rounded-lg border text-xs flex items-start gap-2.5 cursor-pointer transition select-none ${
-                          doc.entregue
-                            ? 'bg-emerald-50/60 border-emerald-300 text-emerald-950 font-medium'
-                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                        }`}
-                      >
-                        <button type="button" className="mt-0.5 flex-shrink-0 text-emerald-600">
-                          {doc.entregue ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4 text-slate-400" />}
-                        </button>
-                        <div className="flex-1 leading-tight">
-                          <span>{doc.nome}</span>
-                          {doc.entregue && doc.data_entrega && (
-                            <span className="block text-[10px] text-emerald-700 mt-0.5 font-normal">
-                              Anexado em: {doc.data_entrega.split('-').reverse().join('/')}
-                            </span>
-                          )}
+
+                  {/* Lista de Documentos Exigidos */}
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Documentos Exigidos na Notificação (Clique para marcar entrega):
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {c.documentos.map(doc => (
+                        <div
+                          key={doc.id}
+                          onClick={() => handleToggleDoc(c.id, doc.id)}
+                          className={`p-2 rounded-lg border text-xs flex items-start gap-2.5 cursor-pointer transition select-none ${
+                            doc.entregue
+                              ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950 font-medium'
+                              : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                          }`}
+                        >
+                          <button type="button" className="mt-0.5 flex-shrink-0 text-emerald-600">
+                            {doc.entregue ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4 text-slate-400" />}
+                          </button>
+                          <div className="flex-1 leading-tight">
+                            <span>{doc.nome}</span>
+                            {doc.entregue && doc.data_entrega && (
+                              <span className="block text-[10px] text-emerald-700 mt-0.5 font-normal">
+                                Anexado em: {doc.data_entrega.split('-').reverse().join('/')}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Botões de Ação da Linha */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Botão Copiar Mensagem de Notificação */}
-                    <button
-                      type="button"
-                      onClick={() => handleCopiarMensagemSisSedur(c)}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
-                    >
-                      {copiadoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copiadoId === c.id ? 'Notificação Copiada!' : 'Copiar Notificação Requerente'}
-                    </button>
-
-                    {/* Botão Copiar Despacho de Devolução / Arquivamento */}
-                    <button
-                      type="button"
-                      onClick={() => handleCopiarDespachoDevolucao(c)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
-                    >
-                      {copiadoDespachoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <FileText className="w-3.5 h-3.5 text-slate-600" />}
-                      {copiadoDespachoId === c.id ? 'Despacho Copiado!' : 'Copiar Despacho p/ Parecer'}
-                    </button>
-
-                    {dias < 0 && !todosEntregues && (
-                      <span className="text-[11px] font-bold text-rose-700 flex items-center gap-1 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
-                        <ArrowRightLeft className="w-3.5 h-3.5" /> Devolver processo à {c.setor_origem}
-                      </span>
-                    )}
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    {/* Botão Editar Acompanhamento */}
-                    <button
-                      type="button"
-                      onClick={() => handleAbrirEdicao(c)}
-                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                      title="Editar Acompanhamento"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                  {/* Botões de Ação do Card */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopiarMensagemSisSedur(c)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                      >
+                        {copiadoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiadoId === c.id ? 'Notificação Copiada!' : 'Copiar Notificação Requerente'}
+                      </button>
 
-                    {/* Botão Excluir Acompanhamento */}
-                    <button
-                      type="button"
-                      onClick={() => handleExcluir(c.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                      title="Excluir Acompanhamento"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCopiarDespachoDevolucao(c)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                      >
+                        {copiadoDespachoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <FileText className="w-3.5 h-3.5 text-slate-600" />}
+                        {copiadoDespachoId === c.id ? 'Despacho Copiado!' : 'Copiar Despacho p/ Parecer'}
+                      </button>
+
+                      {dias < 0 && !todosEntregues && (
+                        <span className="text-[11px] font-bold text-rose-700 flex items-center gap-1 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
+                          <ArrowRightLeft className="w-3.5 h-3.5" /> Devolver processo à {c.setor_origem}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleAbrirEdicao(c)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        title="Editar Acompanhamento"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExcluir(c.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                        title="Excluir Acompanhamento"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -791,7 +827,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
         )}
       </div>
 
-      {/* MODAL DE CADASTRO / EDIÇÃO DE COMUNICAÇÃO EXTERNA */}
+      {/* MODAL DE CADASTRO / EDIÇÃO */}
       {modalAberto && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
@@ -927,7 +963,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
               {novaQtdProrrogacoes >= 2 && (
                 <div className="p-3 bg-amber-50 border-l-4 border-amber-500 rounded text-amber-900 text-xs">
-                  <strong>Atenção:</strong> Processo no limite regulamentar (2 prorrogações). Caso não haja atendimento, os botões de cópia já gerarão o texto de indeferimento e a cota sugerindo arquivamento.
+                  <strong>Atenção:</strong> Processo no limite regulamentar (2 prorrogações). Os botões de cópia gerarão a notificação de indeferimento de prazo e o despacho sugerindo arquivamento.
                 </div>
               )}
 
