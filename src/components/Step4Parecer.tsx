@@ -10,9 +10,10 @@ import {
   CheckCircle2, 
   AlertTriangle,
   FileSearch,
-  SendHorizontal
+  SendHorizontal,
+  Clock
 } from 'lucide-react';
-import { ProcessoFormData, StatusParecer, DestinatarioParecer } from '../types';
+import { ProcessoFormData, StatusParecer, DestinatarioParecer, ComunicacaoExterna } from '../types';
 import { 
   DOCUMENTOS_BASE_CAMACARI, 
   DocumentoBaseItem,
@@ -24,24 +25,27 @@ interface Step4Props {
   formData: ProcessoFormData;
   setFormData: React.Dispatch<React.SetStateAction<ProcessoFormData>>;
   onLimparFormulario: () => void;
+  onIrParaComunicacaoExterna?: () => void;
 }
 
 export const Step4Parecer: React.FC<Step4Props> = ({ 
   formData, 
   setFormData, 
-  onLimparFormulario 
+  onLimparFormulario,
+  onIrParaComunicacaoExterna
 }) => {
   const [copiado, setCopiado] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [sucessoSalvar, setSucessoSalvar] = useState<string | null>(null);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  const [comunicacaoCriada, setComunicacaoCriada] = useState(false);
 
   const tipologia = formData.tipologia_atividade || 'GERAL';
   const modalidade = formData.modalidade;
   const isRenovacao = modalidade === 'RENOVACAO_LAS';
   const isInexigibilidade = modalidade === 'INEXIGIBILIDADE';
 
-  // Identifica documentos obrigatórios da SEDUR (coluna C = "x") que não foram conferidos
+  // Identifica documentos obrigatórios da SEDUR não conferidos
   const documentosFaltantes = useMemo(() => {
     const aplicaveis = DOCUMENTOS_BASE_CAMACARI.filter((doc: DocumentoBaseItem) => {
       if (doc.somenteRenovacao && !isRenovacao) return false;
@@ -129,7 +133,7 @@ Da análise preliminar das informações constantes dos autos eletrônicos e do 
 
 ${listaPendencias}
 
-Ante o exposto, esta Assessoria Técnica (ASTEC) manifesta-se pela BAIXA DOS AUTOS EM DILIGÊNCIA para notificação do interessado no prazo regulamentar de 30 (trinta) dias para cumprimento integral das pendências sobreditas.
+Ante o exposto, esta Assessoria Técnica (ASTEC) manifesta-se pela BAIXA DOS AUTOS EM DILIGÊNCIA para notificação do interessado no prazo regulamentar de 30 a 60 dias para cumprimento integral das pendências sobreditas.
 
 ${fecho}`;
     }
@@ -210,17 +214,54 @@ ${fecho}`;
     }
   };
 
-  const handleMudarSetor = (novoSetor: DestinatarioParecer) => {
-    sincronizarTexto(novoSetor, formData.status_parecer);
-  };
+  // Cria acompanhamento de prazo direto na Comunicação Externa com 1 clique
+  const handleLancarComunicacaoExterna = () => {
+    try {
+      const STORAGE_KEY = 'astec_comunicacoes_externas';
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const lista: ComunicacaoExterna[] = raw ? JSON.parse(raw) : [];
 
-  const handleMudarStatus = (novoStatus: StatusParecer) => {
-    sincronizarTexto(formData.destinatario_parecer, novoStatus);
+      const hoje = new Date().toISOString().split('T')[0];
+      const prazoDias = 60;
+      const dataLimite = new Date();
+      dataLimite.setDate(dataLimite.getDate() + prazoDias);
+      const dataLimiteStr = dataLimite.toISOString().split('T')[0];
+
+      const docsFormatados = documentosFaltantes.map((d, i) => ({
+        id: `doc-${Date.now()}-${i}`,
+        nome: d.nome,
+        entregue: false,
+      }));
+
+      const nova: ComunicacaoExterna = {
+        id: `com-${Date.now()}`,
+        numero_processo: formData.numero_processo || 'Processo sem número',
+        interessado: formData.interessado || 'Requerente não informado',
+        setor_origem: formData.destinatario_parecer || 'CLA',
+        data_envio: hoje,
+        prazo_dias: prazoDias,
+        data_limite: dataLimiteStr,
+        documentos: docsFormatados.length > 0 ? docsFormatados : [{ id: `doc-padrao`, nome: 'Regularização da instrução documental', entregue: false }],
+        observacoes: `Lançado via ASTEC Fácil a partir do Parecer de Diligência (${formData.modalidade})`,
+        created_at: new Date().toISOString(),
+      };
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([nova, ...lista]));
+      setComunicacaoCriada(true);
+
+      setTimeout(() => {
+        if (onIrParaComunicacaoExterna) {
+          onIrParaComunicacaoExterna();
+        }
+      }, 1200);
+    } catch (err) {
+      console.error(err);
+      alert('Não foi possível gravar no módulo de Comunicação Externa.');
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
       <div className="border-b border-slate-200 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -251,7 +292,7 @@ ${fecho}`;
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
             type="button"
-            onClick={() => handleMudarSetor('CLA')}
+            onClick={() => sincronizarTexto('CLA', formData.status_parecer)}
             className={`p-3 rounded-lg border-2 text-left transition ${
               formData.destinatario_parecer === 'CLA'
                 ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold shadow-sm'
@@ -264,7 +305,7 @@ ${fecho}`;
 
           <button
             type="button"
-            onClick={() => handleMudarSetor('GABINETE')}
+            onClick={() => sincronizarTexto('GABINETE', formData.status_parecer)}
             className={`p-3 rounded-lg border-2 text-left transition ${
               formData.destinatario_parecer === 'GABINETE'
                 ? 'border-purple-600 bg-purple-50 text-purple-950 font-bold shadow-sm'
@@ -277,7 +318,7 @@ ${fecho}`;
 
           <button
             type="button"
-            onClick={() => handleMudarSetor('CLU')}
+            onClick={() => sincronizarTexto('CLU', formData.status_parecer)}
             className={`p-3 rounded-lg border-2 text-left transition ${
               formData.destinatario_parecer === 'CLU'
                 ? 'border-blue-600 bg-blue-50 text-blue-950 font-bold shadow-sm'
@@ -290,48 +331,70 @@ ${fecho}`;
         </div>
       </div>
 
-      {/* Alerta de Documentação Faltante */}
+      {/* Alerta de Documentação Faltante e Botão de Acompanhamento */}
       {temPendenciaDocumental ? (
-        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h3 className="text-sm font-bold text-amber-900">
-              Atenção: Há {documentosFaltantes.length} documento(s) com "x" na relação da SEDUR não conferido(s)
-            </h3>
-            <p className="text-xs text-amber-800 mt-1">
-              Para processos com pendência na lista da CLA, a conclusão técnica é a <strong>Baixa em Diligência</strong>.
-            </p>
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleMudarStatus('DILIGENCIA')}
-                className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
-                  formData.status_parecer === 'DILIGENCIA'
-                    ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
-                    : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-100'
-                }`}
-              >
-                Concluir por Diligência
-              </button>
-              <button
-                type="button"
-                onClick={() => handleMudarStatus('DEFERIMENTO')}
-                className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
-                  formData.status_parecer === 'DEFERIMENTO'
-                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                }`}
-              >
-                Manter Deferimento
-              </button>
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-bold text-amber-900">
+                Há {documentosFaltantes.length} documento(s) com "x" na relação da SEDUR pendente(s)
+              </h3>
+              <p className="text-xs text-amber-800 mt-1">
+                Conclusão sugerida: <strong>Baixa em Diligência</strong>. Notifique o requerente pela Comunicação Externa do SIS-SEDUR.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => sincronizarTexto(formData.destinatario_parecer, 'DILIGENCIA')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
+                    formData.status_parecer === 'DILIGENCIA'
+                      ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
+                      : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  Concluir por Diligência
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sincronizarTexto(formData.destinatario_parecer, 'DEFERIMENTO')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg border transition ${
+                    formData.status_parecer === 'DEFERIMENTO'
+                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                  }`}
+                >
+                  Manter Deferimento
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Botão para Lançar no Módulo de Comunicação Externa */}
+          <button
+            type="button"
+            onClick={handleLancarComunicacaoExterna}
+            disabled={comunicacaoCriada}
+            className="px-4 py-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition whitespace-nowrap self-start sm:self-center disabled:bg-emerald-700"
+          >
+            {comunicacaoCriada ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-300" />
+                Lançado na Comunicação Externa!
+              </>
+            ) : (
+              <>
+                <Clock className="w-4 h-4" />
+                Lançar na Comunicação Externa (60 dias)
+              </>
+            )}
+          </button>
         </div>
       ) : (
         <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-semibold">
           <span className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            Todos os documentos obrigatórios da SEDUR (coluna C) foram conferidos. Processo apto para Deferimento.
+            Todos os documentos obrigatórios da SEDUR foram conferidos. Processo apto para Deferimento.
           </span>
           <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded text-[11px]">
             Instrução 100%
