@@ -6,6 +6,7 @@ import {
   CheckCircle2, 
   XCircle, 
   FileSpreadsheet, 
+  Printer,
   Plus, 
   Search, 
   Copy, 
@@ -180,7 +181,22 @@ export const PainelComunicacaoExterna: React.FC = () => {
     return achado ? achado.nome : siglaOrId;
   };
 
-  // Gerador de Texto conforme o cenário selecionado
+  const formatarDocsComLetras = (docs: DocumentoNotificacao[]): string => {
+    if (!docs || docs.length === 0) return 'Nenhum documento especificado';
+    return docs.map((d, i) => {
+      let letra = '';
+      if (i < 26) {
+        letra = String.fromCharCode(97 + i);
+      } else {
+        const p = String.fromCharCode(97 + Math.floor(i / 26) - 1);
+        const s = String.fromCharCode(97 + (i % 26));
+        letra = `${p}${s}`;
+      }
+      return `(${letra}) ${d.nome}`;
+    }).join('<br style="mso-data-placement:same-cell;" />');
+  };
+
+  // Gerador de texto por cenário
   const gerarTextoPorCenario = (c: typeof comunicacoes[0], cenario: CenarioDespacho): string => {
     const pendentes = c.documentos.filter(d => !d.entregue).map((d, i) => `  ${i + 1}. ${d.nome}`).join('\n');
     const dataLimiteFmt = c.data_limite.split('-').reverse().join('/');
@@ -419,7 +435,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
   };
 
   // =========================================================================
-  // EXPORTAÇÃO PERSONALIZADA PARA EXCEL (.XLS FORMATADO PARA IMPRESSÃO)
+  // EXPORTAÇÃO EXCEL (.XLS)
   // =========================================================================
   const handleExportarExcel = () => {
     if (comunicacoes.length === 0) {
@@ -429,28 +445,11 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
     const dataHoje = new Date().toISOString().split('T')[0];
 
-    // 1. Organização dos dados por data do prazo fatal (ordem cronológica crescente)
     const listaOrdenada = [...comunicacoes].sort((a, b) => {
       if (!a.data_limite) return 1;
       if (!b.data_limite) return -1;
       return a.data_limite.localeCompare(b.data_limite);
     });
-
-    // 2. Formatação com letras (a), (b), (c)... em cada documento
-    const formatarDocsComLetras = (docs: DocumentoNotificacao[]): string => {
-      if (!docs || docs.length === 0) return 'Nenhum documento especificado';
-      return docs.map((d, i) => {
-        let letra = '';
-        if (i < 26) {
-          letra = String.fromCharCode(97 + i); // a, b, c...
-        } else {
-          const p = String.fromCharCode(97 + Math.floor(i / 26) - 1);
-          const s = String.fromCharCode(97 + (i % 26));
-          letra = `${p}${s}`;
-        }
-        return `(${letra}) ${d.nome}`;
-      }).join('<br style="mso-data-placement:same-cell;" />');
-    };
 
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -472,11 +471,6 @@ Assessoria Técnica - ASTEC / SEDUR`;
           td.prazo-fatal { font-family: Consolas, monospace; text-align: center; font-weight: bold; color: #991b1b; white-space: nowrap; }
           .linha-impar { background-color: #ffffff; }
           .linha-par { background-color: #f1f5f9; }
-          @media print {
-            body { margin: 0; }
-            table { page-break-inside: auto; }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-          }
         </style>
       </head>
       <body>
@@ -535,6 +529,274 @@ Assessoria Técnica - ASTEC / SEDUR`;
     document.body.removeChild(link);
   };
 
+  // =========================================================================
+  // EXPORTAÇÃO E IMPRESSÃO DE PDF NATIVO FORMATADO EM PAISAGEM
+  // =========================================================================
+  const handleExportarPDF = () => {
+    if (comunicacoes.length === 0) {
+      alert('Não há processos cadastrados para exportar.');
+      return;
+    }
+
+    const dataHojeFmt = new Date().toLocaleDateString('pt-BR');
+    const horaHojeFmt = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    // Ordenado cronologicamente por prazo fatal
+    const listaOrdenada = [...comunicacoes].sort((a, b) => {
+      if (!a.data_limite) return 1;
+      if (!b.data_limite) return -1;
+      return a.data_limite.localeCompare(b.data_limite);
+    });
+
+    const formatarDocsParaImpressao = (docs: DocumentoNotificacao[]): string => {
+      if (!docs || docs.length === 0) return '<span style="color:#94a3b8; font-style:italic;">Nenhum documento especificado</span>';
+      return docs.map((d, i) => {
+        let letra = '';
+        if (i < 26) {
+          letra = String.fromCharCode(97 + i);
+        } else {
+          const p = String.fromCharCode(97 + Math.floor(i / 26) - 1);
+          const s = String.fromCharCode(97 + (i % 26));
+          letra = `${p}${s}`;
+        }
+        return `<div style="margin-bottom: 2px;"><b>(${letra})</b> ${d.nome}</div>`;
+      }).join('');
+    };
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Por favor, permita pop-ups nesta página para abrir a visualização e impressão do PDF.');
+      return;
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <title>Relatório de Prazos e Comunicação Externa - SEDUR</title>
+        <style>
+          @page {
+            size: A4 landscape;
+            margin: 10mm 12mm 10mm 12mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #0f172a;
+            background-color: #ffffff;
+            margin: 0;
+            padding: 15px;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #0f172a;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+          }
+          .header-title h1 {
+            font-size: 15px;
+            font-weight: 800;
+            margin: 0;
+            color: #0f172a;
+          }
+          .header-title p {
+            font-size: 10px;
+            color: #475569;
+            margin: 2px 0 0 0;
+          }
+          .header-meta {
+            text-align: right;
+            font-size: 10px;
+            color: #64748b;
+          }
+          .header-meta strong {
+            color: #0f172a;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            page-break-inside: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+          th {
+            background-color: #0f172a !important;
+            color: #ffffff !important;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 9px;
+            letter-spacing: 0.3px;
+            padding: 7px 8px;
+            border: 1px solid #334155;
+            text-align: left;
+          }
+          th.centro {
+            text-align: center;
+          }
+          td {
+            padding: 6px 8px;
+            border: 1px solid #cbd5e1;
+            vertical-align: top;
+            line-height: 1.35;
+          }
+          td.centro {
+            text-align: center;
+          }
+          .linha-par {
+            background-color: #f8fafc !important;
+          }
+          .linha-impar {
+            background-color: #ffffff !important;
+          }
+          .processo {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-weight: 700;
+            color: #0f172a;
+            white-space: nowrap;
+          }
+          .data {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            text-align: center;
+            white-space: nowrap;
+          }
+          .prazo-fatal {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            text-align: center;
+            font-weight: 800;
+            color: #b91c1c;
+            white-space: nowrap;
+          }
+          .item-num {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-weight: 800;
+            text-align: center;
+            color: #334155;
+          }
+          .footer {
+            margin-top: 14px;
+            font-size: 9px;
+            color: #94a3b8;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 5px;
+          }
+          @media screen {
+            .no-print-bar {
+              background-color: #0f172a;
+              color: #fff;
+              padding: 10px 15px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-radius: 8px;
+              margin-bottom: 15px;
+            }
+            .btn-print {
+              background-color: #2563eb;
+              color: white;
+              border: none;
+              padding: 8px 16px;
+              border-radius: 6px;
+              font-weight: 600;
+              cursor: pointer;
+            }
+          }
+          @media print {
+            .no-print-bar {
+              display: none !important;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print-bar">
+          <span><b>Visualização do Relatório em PDF</b> (Configure para layout Paisagem / Salvar como PDF)</span>
+          <button class="btn-print" onclick="window.print()">Imprimir / Salvar como PDF</button>
+        </div>
+
+        <div class="header">
+          <div class="header-title">
+            <h1>SEDUR Camaçari — Controle de Comunicação Externa e Prazos (ASTEC)</h1>
+            <p>Relatório Oficial de Acompanhamento de Diligências e Prazos Fatais</p>
+          </div>
+          <div class="header-meta">
+            <div>Emissão: <strong>${dataHojeFmt} às ${horaHojeFmt}</strong></div>
+            <div>Total de Processos: <strong>${listaOrdenada.length}</strong></div>
+            <div>Critério: <strong>Ordenado por Prazo Fatal</strong></div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th class="centro" style="width: 42px;">Item</th>
+              <th style="width: 155px;">Processo</th>
+              <th style="width: 175px;">Tipo de Assunto Ambiental</th>
+              <th style="width: 210px;">Interessado / Requerente</th>
+              <th>Documentos Solicitados</th>
+              <th class="centro" style="width: 95px;">Data Envio</th>
+              <th class="centro" style="width: 95px;">Prazo Fatal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${listaOrdenada.map((c, idx) => {
+              const classeLinha = idx % 2 === 0 ? 'linha-impar' : 'linha-par';
+              const itemNumero = `#${String(idx + 1).padStart(2, '0')}`;
+              const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
+              const docsComLetras = formatarDocsParaImpressao(c.documentos);
+              const dataEnvioFmt = c.data_envio ? c.data_envio.split('-').reverse().join('/') : '-';
+              const dataLimiteFmt = c.data_limite ? c.data_limite.split('-').reverse().join('/') : '-';
+
+              return `
+                <tr class="${classeLinha}">
+                  <td class="item-num">${itemNumero}</td>
+                  <td class="processo">${c.numero_processo}</td>
+                  <td><b>${assuntoStr}</b></td>
+                  <td>${c.interessado}</td>
+                  <td>${docsComLetras}</td>
+                  <td class="data">${dataEnvioFmt}</td>
+                  <td class="prazo-fatal">${dataLimiteFmt}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <span>ASTEC / SEDUR — Prefeitura Municipal de Camaçari</span>
+          <span>Documento gerado automaticamente pelo Sistema de Gestão</span>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   // KPIs
   const total = comunicacoes.length;
   const cumpridos = comunicacoes.filter(c => c.documentos.length > 0 && c.documentos.every(d => d.entregue)).length;
@@ -588,6 +850,17 @@ Assessoria Técnica - ASTEC / SEDUR`;
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* BOTÃO BAIXAR EM PDF */}
+          <button
+            type="button"
+            onClick={handleExportarPDF}
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+          >
+            <Printer className="w-4 h-4 text-blue-400" />
+            Baixar Relatório em PDF
+          </button>
+
+          {/* BOTÃO BAIXAR EM EXCEL */}
           <button
             type="button"
             onClick={handleExportarExcel}
@@ -597,10 +870,11 @@ Assessoria Técnica - ASTEC / SEDUR`;
             Baixar Relatório Excel (.xls)
           </button>
 
+          {/* BOTÃO NOVA COMUNICAÇÃO */}
           <button
             type="button"
             onClick={handleAbrirCriacao}
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Nova Comunicação Externa
@@ -758,6 +1032,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
                     )}
                   </div>
 
+                  {/* Status / Alerta */}
                   <div className="flex items-center gap-2 self-start sm:self-auto">
                     {todosEntregues ? (
                       <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
