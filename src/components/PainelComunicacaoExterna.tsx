@@ -13,13 +13,37 @@ import {
   Trash2, 
   X, 
   SendHorizontal,
-  Calendar,
   Building2,
   CheckSquare,
   Square,
-  ArrowRightLeft
+  ArrowRightLeft,
+  FileText,
+  Tag
 } from 'lucide-react';
 import { ComunicacaoExterna, DocumentoNotificacao } from '../types';
+
+// ==========================================
+// 1. PADRONIZAÇÃO DOS ATOS AMBIENTAIS
+// ==========================================
+export interface TipoAssuntoItem {
+  id: string;
+  sigla: string;
+  nome: string;
+  categoria: 'Licenciamento' | 'Atos Declaratórios' | 'Especiais';
+}
+
+export const TIPOS_ASSUNTOS_AMBIENTAIS: TipoAssuntoItem[] = [
+  { id: 'LP', sigla: 'LP', nome: 'Licença Prévia (LP)', categoria: 'Licenciamento' },
+  { id: 'LI', sigla: 'LI', nome: 'Licença de Instalação (LI)', categoria: 'Licenciamento' },
+  { id: 'LO', sigla: 'LO', nome: 'Licença de Operação (LO)', categoria: 'Licenciamento' },
+  { id: 'LAS', sigla: 'LAS', nome: 'Licença Ambiental Simplificada (LAS)', categoria: 'Licenciamento' },
+  { id: 'LAU', sigla: 'LAU', nome: 'Licença Ambiental Unificada (LAU)', categoria: 'Licenciamento' },
+  { id: 'RENOVACAO', sigla: 'RLA', nome: 'Renovação de Licença Ambiental', categoria: 'Especiais' },
+  { id: 'DISPENSA', sigla: 'DLA', nome: 'Dispensa de Licenciamento Ambiental (DLA)', categoria: 'Atos Declaratórios' },
+  { id: 'INEXIGIBILIDADE', sigla: 'INEX', nome: 'Declaração de Inexigibilidade de Licença', categoria: 'Atos Declaratórios' },
+  { id: 'AUTORIZACAO', sigla: 'AA', nome: 'Autorização Ambiental (AA)', categoria: 'Atos Declaratórios' },
+  { id: 'REGULARIZACAO', sigla: 'LOR', nome: 'Licença de Regularização / Operação Corretiva', categoria: 'Especiais' },
+];
 
 const STORAGE_KEY = 'astec_comunicacoes_externas';
 
@@ -40,7 +64,7 @@ export function calcularDiasRestantes(dataLimite: string): number {
 }
 
 export const PainelComunicacaoExterna: React.FC = () => {
-  const [comunicacoes, setComunicacoes] = useState<ComunicacaoExterna[]>([]);
+  const [comunicacoes, setComunicacoes] = useState<(ComunicacaoExterna & { tipo_assunto?: string; qtd_prorrogacoes?: number })[]>([]);
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   
@@ -48,13 +72,16 @@ export const PainelComunicacaoExterna: React.FC = () => {
   const [modalAberto, setModalAberto] = useState(false);
   const [novoProcesso, setNovoProcesso] = useState('');
   const [novoInteressado, setNovoInteressado] = useState('');
+  const [novoTipoAssunto, setNovoTipoAssunto] = useState('LO');
+  const [novaQtdProrrogacoes, setNovaQtdProrrogacoes] = useState(0);
   const [novoSetor, setNovoSetor] = useState('CLA');
   const [novaDataEnvio, setNovaDataEnvio] = useState(new Date().toISOString().split('T')[0]);
-  const [novoPrazoDias, setNovoPrazoDias] = useState(60);
+  const [novoPrazoDias, setNovoPrazoDias] = useState(30);
   const [novoTextoDocs, setNovoTextoDocs] = useState('');
   const [novasObs, setNovasObs] = useState('');
 
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
+  const [copiadoDespachoId, setCopiadoDespachoId] = useState<string | null>(null);
 
   // Carrega do LocalStorage
   useEffect(() => {
@@ -68,7 +95,7 @@ export const PainelComunicacaoExterna: React.FC = () => {
     }
   }, []);
 
-  const salvarLista = (novaLista: ComunicacaoExterna[]) => {
+  const salvarLista = (novaLista: typeof comunicacoes) => {
     setComunicacoes(novaLista);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(novaLista));
@@ -99,10 +126,12 @@ export const PainelComunicacaoExterna: React.FC = () => {
 
     const dataLimiteCalculada = calcularDataLimite(novaDataEnvio, novoPrazoDias);
 
-    const novaCom: ComunicacaoExterna = {
+    const novaCom = {
       id: `com-${Date.now()}`,
       numero_processo: novoProcesso.trim(),
       interessado: novoInteressado.trim(),
+      tipo_assunto: novoTipoAssunto,
+      qtd_prorrogacoes: novaQtdProrrogacoes,
       setor_origem: novoSetor,
       data_envio: novaDataEnvio,
       prazo_dias: novoPrazoDias,
@@ -116,8 +145,11 @@ export const PainelComunicacaoExterna: React.FC = () => {
     setModalAberto(false);
     setNovoProcesso('');
     setNovoInteressado('');
+    setNovoTipoAssunto('LO');
+    setNovaQtdProrrogacoes(0);
     setNovoTextoDocs('');
     setNovasObs('');
+    setNovoPrazoDias(30);
   };
 
   // Alternar entrega de documento individual
@@ -144,33 +176,92 @@ export const PainelComunicacaoExterna: React.FC = () => {
     salvarLista(comunicacoes.filter(c => c.id !== id));
   };
 
-  // Copia o texto formal para colar diretamente na aba Comunicação Externa do SIS-SEDUR
-  const handleCopiarMensagemSisSedur = (c: ComunicacaoExterna) => {
+  // Obter nome legível do tipo de assunto
+  const obterDescricaoAssunto = (siglaOrId?: string) => {
+    if (!siglaOrId) return 'Licenciamento Ambiental';
+    const achado = TIPOS_ASSUNTOS_AMBIENTAIS.find(t => t.id === siglaOrId || t.sigla === siglaOrId);
+    return achado ? achado.nome : siglaOrId;
+  };
+
+  // Copia o texto formal para colar na aba Comunicação Externa do SIS-SEDUR
+  const handleCopiarMensagemSisSedur = (c: typeof comunicacoes[0]) => {
     const pendentes = c.documentos.filter(d => !d.entregue).map((d, i) => `  ${i + 1}. ${d.nome}`).join('\n');
     const dataLimiteFmt = c.data_limite.split('-').reverse().join('/');
+    const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
+    const dias = calcularDiasRestantes(c.data_limite);
+    const prorrogacoes = c.qtd_prorrogacoes || 0;
 
-    const msg = `NOTIFICAÇÃO ADMINISTRATIVA - SEDUR/ASTEC
-Processo SIS-SEDUR nº: ${c.numero_processo}
+    let msg = '';
+    // Se o prazo expirou e atingiu o limite de prorrogações (ou se venceu)
+    if (dias < 0 && prorrogacoes >= 2) {
+      msg = `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
+Processo nº: ${c.numero_processo}
 Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
+
+Prezado(a) Requerente,
+
+Informamos que o pedido de prorrogação de prazo para cumprimento de pendências técnicas foi INDEFERIDO, tendo em vista que já foram concedidas anteriormente 2 (duas) prorrogações de 30 dias no curso do processo, restando esgotado o limite regulamentar.
+
+Diante da preclusão temporal e da ausência de juntada dos documentos solicitados, comunicamos que os autos serão devolvidos ao setor de origem (${c.setor_origem}) com sugestão de ARQUIVAMENTO.
+
+Assessoria Técnica - ASTEC / SEDUR
+Prefeitura Municipal de Camaçari`;
+    } else {
+      msg = `NOTIFICAÇÃO ADMINISTRATIVA - SIS-SEDUR / ASTEC
+Processo nº: ${c.numero_processo}
+Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
 Setor: ${c.setor_origem}
 
 Prezado(a) Requerente,
 
-Para fins de instrução técnica e continuidade da análise do processo em epígrafe, solicitamos a juntada aos autos, no prazo improrrogável de ${c.prazo_dias} dias (até ${dataLimiteFmt}), dos seguintes documentos e esclarecimentos:
+Para fins de instrução técnica do pleito de ${assuntoStr}, solicitamos a juntada aos autos, no prazo de ${c.prazo_dias} dias (até ${dataLimiteFmt}), dos seguintes documentos e esclarecimentos:
 
 ${pendentes || '  1. Regularização de documentos pendentes.'}
 
-Informamos que, esgotado o prazo assinalado sem o devido atendimento, os autos serão devolvidos ao setor de origem (${c.setor_origem}) para indeferimento e arquivamento nos termos da legislação municipal.
+Informamos que é admitida a prorrogação de prazo por até 30 dias (e nova extensão de 30 dias, limite máximo), mediante requerimento justificado protocolado antes do vencimento. Esgotado o prazo sem atendimento, os autos serão devolvidos ao setor de origem (${c.setor_origem}) sugerindo-se o arquivamento.
 
 Assessoria Técnica - ASTEC / SEDUR
 Prefeitura Municipal de Camaçari`;
+    }
 
     navigator.clipboard.writeText(msg);
     setCopiadoId(c.id);
     setTimeout(() => setCopiadoId(null), 3000);
   };
 
-  // EXPORTAÇÃO COMPLETA PARA EXCEL (.XLS FORMATADO)
+  // Copia o Modelo de Despacho / Parecer Interno devolvendo com sugestão de arquivamento
+  const handleCopiarDespachoDevolucao = (c: typeof comunicacoes[0]) => {
+    const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
+    const dataHojeFmt = new Date().toLocaleDateString('pt-BR');
+    const prorrogacoes = c.qtd_prorrogacoes || 0;
+    const textoProrrogacao = prorrogacoes === 1 
+      ? '1 (uma) prorrogação de 30 dias' 
+      : `${prorrogacoes > 0 ? prorrogacoes : 2} (duas) prorrogações sucessivas de 30 dias`;
+
+    const despacho = `DESPACHO / COTA NO PARECER INTERNO
+
+Processo SIS-SEDUR nº: ${c.numero_processo}
+Interessado: ${c.interessado}
+Assunto: ${assuntoStr}
+Origem: ASTEC / SEDUR
+Destino: ${c.setor_origem}
+
+1. Trata-se de processo administrativo referente a ${assuntoStr}. O requerente foi notificado para juntada de documentação indispensável à continuidade da instrução, tendo sido deferidas ${textoProrrogacao}.
+2. Transcorrido o prazo regulamentar sem o saneamento das pendências, resta inviabilizada a conclusão da análise técnica por inércia da parte.
+3. Não havendo mais suporte procedimental para concessão de novo prazo adicional, INDEFERE-SE eventual dilação e RESTITUEM-SE os autos ao setor de origem (${c.setor_origem}) com manifestação sugerindo o ARQUIVAMENTO do processo administrativo.
+
+Camaçari - BA, ${dataHojeFmt}.
+
+Assessoria Técnica - ASTEC / SEDUR`;
+
+    navigator.clipboard.writeText(despacho);
+    setCopiadoDespachoId(c.id);
+    setTimeout(() => setCopiadoDespachoId(null), 3000);
+  };
+
+  // EXPORTAÇÃO COMPLETA PARA EXCEL (.XLS FORMATADO COM COLUNA DO ASSUNTO)
   const handleExportarExcel = () => {
     if (comunicacoes.length === 0) {
       alert('Não há processos cadastrados para exportar.');
@@ -179,7 +270,6 @@ Prefeitura Municipal de Camaçari`;
 
     const dataHoje = new Date().toISOString().split('T')[0];
 
-    // Montagem da tabela HTML para o Excel
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -201,8 +291,10 @@ Prefeitura Municipal de Camaçari`;
           <thead>
             <tr>
               <th>Processo SIS-SEDUR</th>
+              <th>Tipo de Assunto Ambiental</th>
               <th>Interessado / Requerente</th>
               <th>Setor de Devolução</th>
+              <th>Prorrogações</th>
               <th>Data Envio</th>
               <th>Prazo (Dias)</th>
               <th>Prazo Fatal</th>
@@ -245,8 +337,10 @@ Prefeitura Municipal de Camaçari`;
       html += `
         <tr>
           <td><b>${c.numero_processo}</b></td>
+          <td>${obterDescricaoAssunto(c.tipo_assunto)}</td>
           <td>${c.interessado}</td>
           <td>${c.setor_origem}</td>
+          <td>${c.qtd_prorrogacoes || 0} prorrogação(ões)</td>
           <td>${c.data_envio.split('-').reverse().join('/')}</td>
           <td>${c.prazo_dias} dias</td>
           <td><b>${c.data_limite.split('-').reverse().join('/')}</b></td>
@@ -293,9 +387,11 @@ Prefeitura Municipal de Camaçari`;
   const listaFiltrada = useMemo(() => {
     return comunicacoes.filter(c => {
       const termo = busca.toLowerCase();
+      const assuntoNome = obterDescricaoAssunto(c.tipo_assunto).toLowerCase();
       const matchBusca = 
         c.numero_processo.toLowerCase().includes(termo) ||
         c.interessado.toLowerCase().includes(termo) ||
+        assuntoNome.includes(termo) ||
         c.documentos.some(d => d.nome.toLowerCase().includes(termo));
 
       if (!matchBusca) return false;
@@ -402,7 +498,7 @@ Prefeitura Municipal de Camaçari`;
           <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por número do processo, interessado ou documento solicitado..."
+            placeholder="Buscar por número do processo, interessado, tipo de assunto ou documento..."
             value={busca}
             onChange={e => setBusca(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-slate-600"
@@ -450,6 +546,8 @@ Prefeitura Municipal de Camaçari`;
             const dias = calcularDiasRestantes(c.data_limite);
             const todosEntregues = c.documentos.length > 0 && c.documentos.every(d => d.entregue);
             const entreguesQtd = c.documentos.filter(d => d.entregue).length;
+            const assuntoNome = obterDescricaoAssunto(c.tipo_assunto);
+            const prorrogacoes = c.qtd_prorrogacoes || 0;
 
             return (
               <div 
@@ -464,16 +562,26 @@ Prefeitura Municipal de Camaçari`;
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {/* Linha Superior: Processo, Setor e Alertas */}
+                {/* Linha Superior: Processo, Assunto, Setor e Alertas */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono font-bold text-sm text-slate-900">
                         {c.numero_processo}
+                      </span>
+                      {/* Badge do Tipo de Assunto Ambiental */}
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                        <Tag className="w-3 h-3" />
+                        {assuntoNome}
                       </span>
                       <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700 border border-slate-200">
                         Origem: {c.setor_origem}
                       </span>
+                      {prorrogacoes > 0 && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                          {prorrogacoes}ª Prorrogação (+30d)
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs font-semibold text-slate-700 mt-1 flex items-center gap-1.5">
                       <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -527,10 +635,10 @@ Prefeitura Municipal de Camaçari`;
                   </div>
                 </div>
 
-                {/* Lista de Documentos Solicitados para o Requerente */}
+                {/* Lista de Documentos Solicitados */}
                 <div className="space-y-1.5">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Documentos Exigidos na Notificação (Clique para marcar quando o requerente anexar):
+                    Documentos Exigidos na Notificação (Clique para marcar entrega):
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {c.documentos.map(doc => (
@@ -561,14 +669,25 @@ Prefeitura Municipal de Camaçari`;
 
                 {/* Botões de Ação da Linha */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Botão Copiar Mensagem de Notificação */}
                     <button
                       type="button"
                       onClick={() => handleCopiarMensagemSisSedur(c)}
                       className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
                     >
                       {copiadoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copiadoId === c.id ? 'Texto Copiado!' : 'Copiar Mensagem SIS-SEDUR'}
+                      {copiadoId === c.id ? 'Notificação Copiada!' : 'Copiar Notificação Requerente'}
+                    </button>
+
+                    {/* Botão Copiar Despacho de Devolução / Arquivamento */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopiarDespachoDevolucao(c)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      {copiadoDespachoId === c.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <FileText className="w-3.5 h-3.5 text-slate-600" />}
+                      {copiadoDespachoId === c.id ? 'Despacho Copiado!' : 'Copiar Despacho p/ Parecer'}
                     </button>
 
                     {dias < 0 && !todosEntregues && (
@@ -613,6 +732,7 @@ Prefeitura Municipal de Camaçari`;
 
             <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Processo */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Número do Processo SIS-SEDUR *
@@ -626,6 +746,39 @@ Prefeitura Municipal de Camaçari`;
                   />
                 </div>
 
+                {/* Tipo de Assunto Ambiental */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tipo de Assunto Ambiental *
+                  </label>
+                  <select
+                    value={novoTipoAssunto}
+                    onChange={e => setNovoTipoAssunto(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                  >
+                    {TIPOS_ASSUNTOS_AMBIENTAIS.map(t => (
+                      <option key={t.id} value={t.id}>
+                        [{t.sigla}] {t.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Interessado */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Interessado / Razão Social *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Nome da empresa ou requerente"
+                    value={novoInteressado}
+                    onChange={e => setNovoInteressado(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                {/* Setor de Origem */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Setor de Origem (Para devolver se expirar) *
@@ -642,19 +795,23 @@ Prefeitura Municipal de Camaçari`;
                   </select>
                 </div>
 
-                <div className="sm:col-span-2">
+                {/* Controle de Prorrogações Concedidas */}
+                <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Interessado / Razão Social *
+                    Prorrogações Anteriores Concedidas
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Nome da empresa ou requerente"
-                    value={novoInteressado}
-                    onChange={e => setNovoInteressado(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
-                  />
+                  <select
+                    value={novaQtdProrrogacoes}
+                    onChange={e => setNovaQtdProrrogacoes(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                  >
+                    <option value={0}>0 - Prazo inicial regular</option>
+                    <option value={1}>1 - Uma prorrogação concedida (+30d)</option>
+                    <option value={2}>2 - Duas prorrogações (+60d - Limite Máximo)</option>
+                  </select>
                 </div>
 
+                {/* Data de Envio */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Data de Envio da Comunicação *
@@ -667,6 +824,7 @@ Prefeitura Municipal de Camaçari`;
                   />
                 </div>
 
+                {/* Prazo em dias */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Prazo Concedido ao Requerente *
@@ -678,12 +836,18 @@ Prefeitura Municipal de Camaçari`;
                   >
                     <option value={15}>15 dias</option>
                     <option value={20}>20 dias</option>
-                    <option value={30}>30 dias</option>
-                    <option value={60}>60 dias (Padrão)</option>
+                    <option value={30}>30 dias (Padrão ambiental)</option>
+                    <option value={60}>60 dias</option>
                     <option value={90}>90 dias</option>
                   </select>
                 </div>
               </div>
+
+              {novaQtdProrrogacoes >= 2 && (
+                <div className="p-3 bg-amber-50 border-l-4 border-amber-500 rounded text-amber-900 text-xs">
+                  <strong>Atenção:</strong> Processo no limite regulamentar (2 prorrogações). Caso não haja atendimento, os botões de cópia já gerarão o texto de indeferimento e a cota sugerindo arquivamento.
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -691,7 +855,7 @@ Prefeitura Municipal de Camaçari`;
                 </label>
                 <textarea
                   rows={4}
-                  placeholder="Exemplo:&#10;Certidão de matrícula e ônus reais atualizada do RGI&#10;Certificado de Licença do Corpo de Bombeiros (AVCB)&#10;Projetos aprovados pela EMBASA"
+                  placeholder="Exemplo:&#10;Certidão de matrícula atualizada&#10;Licença do Corpo de Bombeiros (AVCB)&#10;Estudo de Impacto Ambiental / Relatório Ambiental Simplificado"
                   value={novoTextoDocs}
                   onChange={e => setNovoTextoDocs(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-mono"
@@ -704,7 +868,7 @@ Prefeitura Municipal de Camaçari`;
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Requerente alegou processo judicial no imóvel"
+                  placeholder="Ex: Requerente solicitou prorrogação verbalmente"
                   value={novasObs}
                   onChange={e => setNovasObs(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
@@ -723,7 +887,7 @@ Prefeitura Municipal de Camaçari`;
               <button
                 type="button"
                 onClick={handleCriarComunicacao}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition"
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm"
               >
                 Salvar Acompanhamento
               </button>
