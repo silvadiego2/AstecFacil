@@ -21,7 +21,8 @@ import {
   FileText,
   Tag,
   Pencil,
-  Eye
+  Eye,
+  Archive
 } from 'lucide-react';
 import { ComunicacaoExterna, DocumentoNotificacao } from '../types';
 
@@ -99,7 +100,9 @@ export type CenarioDespacho =
 export const PainelComunicacaoExterna: React.FC = () => {
   const [comunicacoes, setComunicacoes] = useState<(ComunicacaoExterna & { tipo_assunto?: string; qtd_prorrogacoes?: number })[]>([]);
   const [busca, setBusca] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  
+  // Por padrão, exibe apenas os PENDENTES (ocultando os cumpridos da visão diária)
+  const [filtroStatus, setFiltroStatus] = useState<string>('PENDENTES');
   
   // Modal de Cadastro/Edição
   const [modalAberto, setModalAberto] = useState(false);
@@ -445,6 +448,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
     const dataHoje = new Date().toISOString().split('T')[0];
 
+    // Exporta os processos organizados por prazo fatal
     const listaOrdenada = [...comunicacoes].sort((a, b) => {
       if (!a.data_limite) return 1;
       if (!b.data_limite) return -1;
@@ -530,27 +534,30 @@ Assessoria Técnica - ASTEC / SEDUR`;
   };
 
   // =========================================================================
-  // EXPORTAÇÃO E IMPRESSÃO DE PDF NATIVO FORMATADO EM PAISAGEM
+  // EXPORTAÇÃO PDF: FILTRA EXCLUSIVAMENTE OS PENDENTES (CUMPRIDOS NÃO ENTRAM)
   // =========================================================================
   const handleExportarPDF = () => {
-    if (comunicacoes.length === 0) {
-      alert('Não há processos cadastrados para exportar.');
+    // Filtra estritamente os processos pendentes (remove os cumpridos)
+    const listaPendentes = comunicacoes
+      .filter(c => !(c.documentos.length > 0 && c.documentos.every(d => d.entregue)))
+      .sort((a, b) => {
+        if (!a.data_limite) return 1;
+        if (!b.data_limite) return -1;
+        return a.data_limite.localeCompare(b.data_limite);
+      });
+
+    if (listaPendentes.length === 0) {
+      alert('Não há processos pendentes no momento para gerar o relatório PDF.');
       return;
     }
 
     const dataHojeFmt = new Date().toLocaleDateString('pt-BR');
     const horaHojeFmt = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-    // Ordenado cronologicamente por prazo fatal
-    const listaOrdenada = [...comunicacoes].sort((a, b) => {
-      if (!a.data_limite) return 1;
-      if (!b.data_limite) return -1;
-      return a.data_limite.localeCompare(b.data_limite);
-    });
-
     const formatarDocsParaImpressao = (docs: DocumentoNotificacao[]): string => {
-      if (!docs || docs.length === 0) return '<span style="color:#94a3b8; font-style:italic;">Nenhum documento especificado</span>';
-      return docs.map((d, i) => {
+      const pendentesDocs = docs.filter(d => !d.entregue);
+      if (!pendentesDocs || pendentesDocs.length === 0) return '<span style="color:#94a3b8; font-style:italic;">Nenhum documento pendente</span>';
+      return pendentesDocs.map((d, i) => {
         let letra = '';
         if (i < 26) {
           letra = String.fromCharCode(97 + i);
@@ -724,18 +731,18 @@ Assessoria Técnica - ASTEC / SEDUR`;
       </head>
       <body>
         <div class="no-print-bar">
-          <span><b>Visualização do Relatório em PDF</b> (Configure para layout Paisagem / Salvar como PDF)</span>
+          <span><b>Visualização do Relatório em PDF (Somente Pendentes)</b></span>
           <button class="btn-print" onclick="window.print()">Imprimir / Salvar como PDF</button>
         </div>
 
         <div class="header">
           <div class="header-title">
             <h1>SEDUR Camaçari — Controle de Comunicação Externa e Prazos (ASTEC)</h1>
-            <p>Relatório Oficial de Acompanhamento de Diligências e Prazos Fatais</p>
+            <p>Relatório de Diligências e Prazos Fatais — <b>Processos Pendentes de Atendimento</b></p>
           </div>
           <div class="header-meta">
             <div>Emissão: <strong>${dataHojeFmt} às ${horaHojeFmt}</strong></div>
-            <div>Total de Processos: <strong>${listaOrdenada.length}</strong></div>
+            <div>Pendências Ativas: <strong>${listaPendentes.length}</strong></div>
             <div>Critério: <strong>Ordenado por Prazo Fatal</strong></div>
           </div>
         </div>
@@ -747,13 +754,13 @@ Assessoria Técnica - ASTEC / SEDUR`;
               <th style="width: 155px;">Processo</th>
               <th style="width: 175px;">Tipo de Assunto Ambiental</th>
               <th style="width: 210px;">Interessado / Requerente</th>
-              <th>Documentos Solicitados</th>
+              <th>Documentos Pendentes Solicitados</th>
               <th class="centro" style="width: 95px;">Data Envio</th>
               <th class="centro" style="width: 95px;">Prazo Fatal</th>
             </tr>
           </thead>
           <tbody>
-            ${listaOrdenada.map((c, idx) => {
+            ${listaPendentes.map((c, idx) => {
               const classeLinha = idx % 2 === 0 ? 'linha-impar' : 'linha-par';
               const itemNumero = `#${String(idx + 1).padStart(2, '0')}`;
               const assuntoStr = obterDescricaoAssunto(c.tipo_assunto);
@@ -778,7 +785,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
         <div class="footer">
           <span>ASTEC / SEDUR — Prefeitura Municipal de Camaçari</span>
-          <span>Documento gerado automaticamente pelo Sistema de Gestão</span>
+          <span>Exclui processos com diligências 100% cumpridas</span>
         </div>
 
         <script>
@@ -797,20 +804,25 @@ Assessoria Técnica - ASTEC / SEDUR`;
     printWindow.document.close();
   };
 
-  // KPIs
-  const total = comunicacoes.length;
+  // =========================================================================
+  // CÁLCULOS DE RESUMO (KPIS)
+  // O "Total Pendentes" agora reflete apenas processos não cumpridos
+  // =========================================================================
   const cumpridos = comunicacoes.filter(c => c.documentos.length > 0 && c.documentos.every(d => d.entregue)).length;
+  const pendentesTotal = comunicacoes.length - cumpridos;
+
   const expirados = comunicacoes.filter(c => {
     const todosEntregues = c.documentos.length > 0 && c.documentos.every(d => d.entregue);
     return !todosEntregues && calcularDiasRestantes(c.data_limite) < 0;
   }).length;
+
   const criticos = comunicacoes.filter(c => {
     const todosEntregues = c.documentos.length > 0 && c.documentos.every(d => d.entregue);
     const dias = calcularDiasRestantes(c.data_limite);
     return !todosEntregues && dias >= 0 && dias <= 7;
   }).length;
 
-  // Filtragem
+  // Filtragem Inteligente: por padrão mostra apenas os PENDENTES
   const listaFiltrada = useMemo(() => {
     return comunicacoes.filter(c => {
       const termo = busca.toLowerCase();
@@ -826,12 +838,15 @@ Assessoria Técnica - ASTEC / SEDUR`;
       const todosEntregues = c.documentos.length > 0 && c.documentos.every(d => d.entregue);
       const dias = calcularDiasRestantes(c.data_limite);
 
+      // Regras de Visualização
+      if (filtroStatus === 'PENDENTES') return !todosEntregues;
       if (filtroStatus === 'VENCIDOS') return !todosEntregues && dias < 0;
       if (filtroStatus === 'CRITICOS') return !todosEntregues && dias >= 0 && dias <= 7;
-      if (filtroStatus === 'CUMPRIDOS') return todosEntregues;
       if (filtroStatus === 'ANDAMENTO') return !todosEntregues && dias > 7;
+      if (filtroStatus === 'CUMPRIDOS') return todosEntregues; // Apenas quando o usuário clica em Cumpridos
+      if (filtroStatus === 'TODOS') return true; // Todos juntos caso queira ver tudo
 
-      return true;
+      return !todosEntregues;
     });
   }, [comunicacoes, busca, filtroStatus]);
 
@@ -845,16 +860,17 @@ Assessoria Técnica - ASTEC / SEDUR`;
             Controle de Comunicação Externa e Prazos (SIS-SEDUR)
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Acompanhe prazos fatais de diligências, entregas documentais pelo requerente e emita despachos de arquivamento.
+            Acompanhe prazos fatais de diligências pendentes, entregas documentais e emita despachos de arquivamento.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* BOTÃO BAIXAR EM PDF */}
+          {/* BOTÃO BAIXAR EM PDF (SOMENTE PENDENTES) */}
           <button
             type="button"
             onClick={handleExportarPDF}
             className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+            title="Exporta PDF somente com os processos pendentes ordenados pelo prazo fatal"
           >
             <Printer className="w-4 h-4 text-blue-400" />
             Baixar Relatório em PDF
@@ -882,16 +898,18 @@ Assessoria Técnica - ASTEC / SEDUR`;
         </div>
       </div>
 
-      {/* Cards de Resumo (KPIs) */}
+      {/* Cards de Resumo (KPIs) - TOTAL FOCA EM PENDENTES */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div 
-          onClick={() => setFiltroStatus('TODOS')}
+          onClick={() => setFiltroStatus('PENDENTES')}
           className={`p-4 rounded-xl border cursor-pointer transition ${
-            filtroStatus === 'TODOS' ? 'border-slate-900 bg-white ring-2 ring-slate-800 shadow-sm' : 'bg-slate-50 border-slate-200 hover:bg-white'
+            filtroStatus === 'PENDENTES' ? 'border-blue-600 bg-white ring-2 ring-blue-500 shadow-sm' : 'bg-slate-50 border-slate-200 hover:bg-white'
           }`}
         >
-          <div className="text-xs font-medium text-slate-500">Total Monitorados</div>
-          <div className="text-2xl font-bold text-slate-800 mt-1">{total}</div>
+          <div className="text-xs font-semibold text-blue-900 flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5 text-blue-600" /> Total Pendentes
+          </div>
+          <div className="text-2xl font-bold text-slate-800 mt-1">{pendentesTotal}</div>
         </div>
 
         <div 
@@ -918,16 +936,17 @@ Assessoria Técnica - ASTEC / SEDUR`;
           <div className="text-2xl font-bold text-rose-700 mt-1">{expirados}</div>
         </div>
 
+        {/* Card de Cumpridos / Arquivo Concluído */}
         <div 
           onClick={() => setFiltroStatus('CUMPRIDOS')}
           className={`p-4 rounded-xl border cursor-pointer transition ${
-            filtroStatus === 'CUMPRIDOS' ? 'border-emerald-500 bg-white ring-2 ring-emerald-400 shadow-sm' : 'bg-emerald-50/50 border-emerald-200 hover:bg-white'
+            filtroStatus === 'CUMPRIDOS' ? 'border-emerald-600 bg-white ring-2 ring-emerald-500 shadow-sm' : 'bg-emerald-50/40 border-emerald-200 hover:bg-white'
           }`}
         >
-          <div className="text-xs font-medium text-emerald-800 flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Cumpridos
+          <div className="text-xs font-semibold text-emerald-900 flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Cumpridos (Histórico)
           </div>
-          <div className="text-2xl font-bold text-emerald-700 mt-1">{cumpridos}</div>
+          <div className="text-2xl font-bold text-emerald-800 mt-1">{cumpridos}</div>
         </div>
       </div>
 
@@ -946,11 +965,12 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {[
-            { id: 'TODOS', label: 'Todos' },
-            { id: 'ANDAMENTO', label: 'Em Prazo' },
-            { id: 'CRITICOS', label: 'Críticos' },
-            { id: 'VENCIDOS', label: 'Vencidos' },
-            { id: 'CUMPRIDOS', label: 'Cumpridos' },
+            { id: 'PENDENTES', label: `Pendentes (${pendentesTotal})` },
+            { id: 'CRITICOS', label: `Críticos (${criticos})` },
+            { id: 'VENCIDOS', label: `Vencidos (${expirados})` },
+            { id: 'ANDAMENTO', label: 'Em Prazo Regular' },
+            { id: 'CUMPRIDOS', label: `Cumpridos / Arquivo (${cumpridos})` },
+            { id: 'TODOS', label: `Todos Geral (${comunicacoes.length})` },
           ].map(f => (
             <button
               key={f.id}
@@ -968,6 +988,25 @@ Assessoria Técnica - ASTEC / SEDUR`;
         </div>
       </div>
 
+      {/* AVISO QUANDO VISUALIZANDO CUMPRIDOS */}
+      {filtroStatus === 'CUMPRIDOS' && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-950">
+          <div className="flex items-center gap-2">
+            <Archive className="w-4 h-4 text-emerald-700" />
+            <span>
+              Você está visualizando os <b>processos cumpridos ({cumpridos})</b>. Todas as exigências foram atendidas.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltroStatus('PENDENTES')}
+            className="font-bold underline text-emerald-800 hover:text-emerald-950"
+          >
+            Voltar para Pendentes
+          </button>
+        </div>
+      )}
+
       {/* LISTA DE PROCESSOS */}
       <div className="space-y-4">
         {listaFiltrada.length === 0 ? (
@@ -975,10 +1014,21 @@ Assessoria Técnica - ASTEC / SEDUR`;
             <Clock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <h3 className="text-sm font-bold text-slate-700">Nenhum processo localizado</h3>
             <p className="text-xs text-slate-500 mt-1">
-              {comunicacoes.length === 0 
+              {filtroStatus === 'CUMPRIDOS'
+                ? 'Nenhum processo foi marcado como cumprido até o momento.'
+                : comunicacoes.length === 0 
                 ? 'Clique em "+ Nova Comunicação Externa" para cadastrar seu primeiro acompanhamento de prazo.'
-                : 'Nenhum registro corresponde aos filtros selecionados.'}
+                : 'Não há pendências correspondentes ao filtro selecionado.'}
             </p>
+            {filtroStatus !== 'PENDENTES' && (
+              <button
+                type="button"
+                onClick={() => setFiltroStatus('PENDENTES')}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
+              >
+                Ver Processos Pendentes
+              </button>
+            )}
           </div>
         ) : (
           listaFiltrada.map((c, index) => {
@@ -990,6 +1040,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
             const prorrogacoes = c.qtd_prorrogacoes || 0;
             const numeroSequencial = String(index + 1).padStart(2, '0');
 
+            // Borda cinza em repouso e roxo ao passar o mouse
             let estiloCard = 'border-l-[6px] border-l-slate-300 border-slate-200 bg-white hover:border-l-purple-600 hover:border-purple-300 hover:bg-purple-50/10 transition-all duration-200';
 
             if (todosEntregues) {
@@ -1037,7 +1088,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
                     {todosEntregues ? (
                       <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        Cumprido ({entreguesQtd}/{c.documentos.length})
+                        Cumprido Integralmente ({entreguesQtd}/{c.documentos.length})
                       </span>
                     ) : dias < 0 ? (
                       <span className="px-3 py-1.5 bg-rose-100 text-rose-950 border border-rose-300 rounded-lg text-xs font-bold flex items-center gap-1.5 animate-pulse shadow-2xs">
