@@ -17,7 +17,6 @@ import {
   XCircle,
   Copy,
   Check,
-  Tag,
   ListChecks
 } from 'lucide-react';
 import { ProcessoFormData } from '../types';
@@ -47,6 +46,16 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
   const modalidade = formData.modalidade;
   const isRenovacao = modalidade === 'RENOVACAO_LAS';
   const isInexigibilidade = modalidade === 'INEXIGIBILIDADE';
+
+  // Resolução segura do setor de destino (evita erro TS2339 e aplica as regras da SEDUR)
+  const setorDestino = useMemo(() => {
+    const fAny = formData as Record<string, any>;
+    if (fAny.destinatario_parecer) return fAny.destinatario_parecer;
+    if (fAny.destinatario) return fAny.destinatario;
+    if (modalidade === 'RENOVACAO_LAS') return 'GABINETE';
+    if (modalidade === 'INEXIGIBILIDADE' && tipologia === 'URBANISTICO') return 'CLU';
+    return 'CLA';
+  }, [formData, modalidade, tipologia]);
 
   // Controle de abas internas do Passo 3
   const [abaAtiva, setAbaAtiva] = useState<'ANEXOS' | 'CHECKLIST'>('ANEXOS');
@@ -86,7 +95,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
   } => {
     const nomeLimpo = nomeArquivo.toLowerCase();
 
-    // Regra Especial da CLA/SEDUR: AVCB dos Bombeiros NÃO é obrigatório no licenciamento ambiental
+    // Regra da CLA/SEDUR: AVCB NÃO é obrigatório no licenciamento ambiental
     if (/bombeiros|avcb|clcb|panico/i.test(nomeLimpo)) {
       const docAvcb = docsAplicaveis.find(d => /bombeiro|avcb/i.test(d.nome));
       return {
@@ -96,7 +105,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
       };
     }
 
-    // Identificação de Matrícula ou Contrato de Locação (Flexibilidade dominial aceita na SEDUR)
+    // Identificação de Matrícula ou Contrato de Locação
     if (/matricula|rgi|onus|escritura|registro.*imovel/i.test(nomeLimpo)) {
       const docMatricula = docsAplicaveis.find(d => /matr[íi]cula|rgi/i.test(d.nome));
       return {
@@ -121,7 +130,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
       return {
         docCorrespondente: docEsgoto,
         status: 'CONFORME',
-        observacao: 'Comprovação de saneamento: Rede pública da EMBASA ou Anotação de Responsabilidade Técnica de Fossa Séptica.',
+        observacao: 'Comprovação de saneamento: Rede pública da EMBASA ou ART/RRT de Fossa Séptica com sumidouro.',
       };
     }
 
@@ -144,7 +153,7 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
     };
   };
 
-  // Processamento do upload / drag & drop de arquivos
+  // Processamento do upload / drag & drop
   const handleProcessarArquivos = (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
@@ -228,15 +237,15 @@ export const Step3Documentos: React.FC<Step3Props> = ({ formData, setFormData })
     return 'Art. 51 e Anexo II da Lei Complementar nº 1.876/2023 e diretrizes de zoneamento da LC nº 1.873/2023 (PDDU Camaçari).';
   }, [modalidade, isRenovacao]);
 
-  // Texto formatado para copiar ou transportar para o parecer
+  // Relatório formatado para copiar ou transportar para o parecer
   const handleCopiarRelatorioAuditoria = () => {
     const texto = `RELATÓRIO DE AUDITORIA DOCUMENTAL - SEDUR CAMAÇARI (ASTEC)
-Modalidade: ${modalidade} | Tipologia: ${tipologia} | Destino: ${formData.destinatario || 'CLA'}
+Modalidade: ${modalidade} | Tipologia: ${tipologia} | Destino: ${setorDestino}
 Data da Análise: ${new Date().toLocaleDateString('pt-BR')}
 
 1. DIAGNÓSTICO DE INSTRUÇÃO PROCESSUAL:
 - Total de documentos aplicáveis analisados: ${docsAplicaveis.length}
-- Documentos obrigatórios (com "x" na Coluna C da SEDUR): ${docsObrigatorios.length}
+- Documentos obrigatórios (Coluna C da SEDUR): ${docsObrigatorios.length}
 - Documentos obrigatórios conferidos/anexados: ${obrigatoriosConferidos.length}
 - Pendências de documentos obrigatórios: ${docsObrigatoriosFaltantes.length}
 
@@ -246,14 +255,14 @@ ${docsObrigatoriosFaltantes.map((d, i) => `  ${i + 1}. Item ${d.itemSedur} -${d.
 3. DIRETRIZES ESPECÍFICAS DA SEDUR CAMAÇARI APLICADAS:
 - AVCB (Corpo de Bombeiros): Conforme diretriz da CLA/SEDUR, o AVCB não é condicionante obrigatória para licenciamento ambiental ordinário.
 - Dominialidade: Aceita-se Certidão de Matrícula do RGI atualizada ou Contrato de Locação/Cessão de Posse com firmas reconhecidas.
-- Esgotamento Sanitário: Declaração da EMBASA ou ART/RRT de sistema individual (fossa séptica + sumidouro).
+- Esgotamento Sanitário: Declaração de viabilidade da EMBASA ou ART/RRT de fossa séptica e sumidouro.
 
 4. BASE LEGAL MUNICIPAL:
 ${fundamentacaoLegal}
 
 5. ENCAMINHAMENTO TÉCNICO SUGERIDO:
 ${instrucaoCompleta 
-  ? `Opina-se pelo DEFERIMENTO do pleito de ${modalidade}, com restituição dos autos ao setor competente (${formData.destinatario || 'CLA'}).`
+  ? `Opina-se pelo DEFERIMENTO do pleito de ${modalidade}, com restituição dos autos ao setor competente (${setorDestino}).`
   : `Opina-se pela NOTIFICAÇÃO DO INTERESSADO (Diligência via SIS-SEDUR) no prazo regulamentar para apresentação dos documentos pendentes.`
 }`;
 
@@ -501,7 +510,7 @@ ${instrucaoCompleta
                 {instrucaoCompleta ? (
                   <span className="px-3 py-1.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    APTO PARA DEFERIMENTO ({formData.destinatario || 'CLA'})
+                    APTO PARA DEFERIMENTO ({setorDestino})
                   </span>
                 ) : (
                   <span className="px-3 py-1.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
