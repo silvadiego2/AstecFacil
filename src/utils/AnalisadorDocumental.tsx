@@ -1,5 +1,5 @@
 // src/components/AnalisadorDocumental.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   UploadCloud, 
   FileCheck2, 
@@ -13,13 +13,14 @@ import {
   ShieldCheck,
   Copy,
   Check,
-  PlusCircle,
-  Layers
+  Layers,
+  PowerOff
 } from 'lucide-react';
 import { DocumentoAnexado, ResultadoAuditoriaSedur } from '../types/analiseDocumental';
 import { 
   classificarArquivoAnexado, 
-  executarAuditoriaDocumentalSedur 
+  executarAuditoriaDocumentalSedur,
+  normalizarTexto 
 } from '../utils/analisadorDocumentalSedur';
 import { CHECKLIST_SEDUR_EXIGENCIAS } from '../utils/constants';
 
@@ -28,35 +29,66 @@ interface AnalisadorDocumentalProps {
   setorDestino: string;
   onAplicarChecklist?: (documentosAtendidos: string[]) => void;
   onTransferirParaParecer?: (resultado: ResultadoAuditoriaSedur) => void;
+  onAlterarModalidade?: (novaModalidade: string) => void;
 }
 
 export const AnalisadorDocumental: React.FC<AnalisadorDocumentalProps> = ({
-  modalidade,
+  modalidade: modalidadeInicial,
   setorDestino,
   onAplicarChecklist,
   onTransferirParaParecer,
+  onAlterarModalidade,
 }) => {
+  const [modalidadeAtiva, setModalidadeAtiva] = useState<string>(modalidadeInicial || 'RENOVACAO_LAS');
   const [anexos, setAnexos] = useState<DocumentoAnexado[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [resultadoAuditoria, setResultadoAuditoria] = useState<ResultadoAuditoriaSedur | null>(null);
   const [copiado, setCopiado] = useState(false);
+  const [alertaDetectadoBaixa, setAlertaDetectadoBaixa] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const checklistDisponivel = CHECKLIST_SEDUR_EXIGENCIAS[modalidade] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
+  // Sincroniza se a prop modalidade for alterada no componente pai
+  useEffect(() => {
+    if (modalidadeInicial && modalidadeInicial !== modalidadeAtiva) {
+      setModalidadeAtiva(modalidadeInicial);
+      rodarAuditoria(anexos, modalidadeInicial);
+    }
+  }, [modalidadeInicial]);
 
-  const rodarAuditoria = (lista: DocumentoAnexado[]) => {
+  const checklistDisponivel = CHECKLIST_SEDUR_EXIGENCIAS[modalidadeAtiva] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
+
+  const rodarAuditoria = (lista: DocumentoAnexado[], mod: string = modalidadeAtiva) => {
     if (lista.length > 0) {
-      setResultadoAuditoria(executarAuditoriaDocumentalSedur(lista, modalidade, setorDestino));
+      setResultadoAuditoria(executarAuditoriaDocumentalSedur(lista, mod, setorDestino));
     } else {
       setResultadoAuditoria(null);
     }
   };
 
+  const handleMudarModalidade = (novaMod: string) => {
+    setModalidadeAtiva(novaMod);
+    setAlertaDetectadoBaixa(false);
+    if (onAlterarModalidade) onAlterarModalidade(novaMod);
+    rodarAuditoria(anexos, novaMod);
+  };
+
   const processarArquivos = (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    let detectouTermoBaixa = false;
+
     const novosAnexos: DocumentoAnexado[] = Array.from(files).map(file => {
-      const analisePrevia = classificarArquivoAnexado(file.name, modalidade);
+      const nomeNorm = normalizarTexto(file.name);
+      if (
+        nomeNorm.includes('baixa') || 
+        nomeNorm.includes('encerramento') || 
+        nomeNorm.includes('desativacao') ||
+        nomeNorm.includes('desmobilizacao')
+      ) {
+        detectouTermoBaixa = true;
+      }
+
+      const analisePrevia = classificarArquivoAnexado(file.name, modalidadeAtiva);
       return {
         id: `anexo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         arquivoNome: file.name,
@@ -70,12 +102,15 @@ export const AnalisadorDocumental: React.FC<AnalisadorDocumentalProps> = ({
       };
     });
 
+    if (detectouTermoBaixa && modalidadeAtiva !== 'BAIXA_LICENCA') {
+      setAlertaDetectadoBaixa(true);
+    }
+
     const listaFinal = [...anexos, ...novosAnexos];
     setAnexos(listaFinal);
-    rodarAuditoria(listaFinal);
+    rodarAuditoria(listaFinal, modalidadeAtiva);
   };
 
-  // Permite alterar o tipo do documento manualmente se a IA/RegEx não identificar
   const handleAlterarItemManual = (anexoId: string, itemChecklistId: string) => {
     const itemEncontrado = checklistDisponivel.find(i => i.id === itemChecklistId);
     
@@ -93,23 +128,21 @@ export const AnalisadorDocumental: React.FC<AnalisadorDocumentalProps> = ({
     });
 
     setAnexos(atualizados);
-    rodarAuditoria(atualizados);
+    rodarAuditoria(atualizados, modalidadeAtiva);
   };
 
-  // Permite declarar que um documento existe dentro de um PDF unificado (PDF24)
   const handleAdicionarItemAoPdfUnificado = (itemChecklistId: string) => {
     if (!itemChecklistId) return;
     const item = checklistDisponivel.find(i => i.id === itemChecklistId);
     if (!item) return;
 
-    // Evita duplicar se já foi adicionado
     if (anexos.some(a => a.itemChecklistId === item.id)) {
       alert('Este documento já consta na lista de anexos identificados.');
       return;
     }
 
     const novoItem: DocumentoAnexado = {
-      id: `anexo-unificado-${Date.now()}`,
+      id: `anexo-unificado-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       arquivoNome: `[Parte do PDF Unificado] ${item.nome}`,
       tamanhoBytes: 0,
       tipoMime: 'application/pdf',
@@ -117,25 +150,25 @@ export const AnalisadorDocumental: React.FC<AnalisadorDocumentalProps> = ({
       categoriaIdentificada: item.nome.split(' ')[0].toUpperCase(),
       itemChecklistId: item.id,
       statusConformidade: 'CONFORME',
-      observacoesAnalise: `Identificado dentro do arquivo consolidado/PDF24.`
+      observacoesAnalise: `Documento identificado dentro do arquivo consolidado (PDF24).`
     };
 
     const listaAtualizada = [...anexos, novoItem];
     setAnexos(listaAtualizada);
-    rodarAuditoria(listaAtualizada);
+    rodarAuditoria(listaAtualizada, modalidadeAtiva);
   };
 
   const handleRemoverAnexo = (id: string) => {
     const atualizados = anexos.filter(a => a.id !== id);
     setAnexos(atualizados);
-    rodarAuditoria(atualizados);
+    rodarAuditoria(atualizados, modalidadeAtiva);
   };
 
   const handleCopiarTextoAuditoria = () => {
     if (!resultadoAuditoria) return;
 
     const texto = `RELATÓRIO DE AUDITORIA DOCUMENTAL - SEDUR CAMAÇARI
-Modalidade: ${modalidade} | Setor: ${setorDestino}
+Modalidade: ${modalidadeAtiva.replace('_', ' ')} | Setor: ${setorDestino}
 Data: ${new Date().toLocaleDateString('pt-BR')}
 
 1. CONFERÊNCIA DOS DOCUMENTOS OBRIGATÓRIOS:
@@ -162,7 +195,70 @@ ${resultadoAuditoria.resumoParecer}`;
 
   return (
     <div className="space-y-6">
-      {/* Caixa de Entrada de Arquivos (Drag & Drop) */}
+      {/* SELETOR INTERATIVO DE MODALIDADE */}
+      <div className="bg-slate-100 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 border border-slate-300">
+        <div className="flex items-center gap-2">
+          <Scale className="w-4 h-4 text-slate-700" />
+          <span className="text-xs font-bold text-slate-800">Modalidade em Análise:</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleMudarModalidade('RENOVACAO_LAS')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              modalidadeAtiva === 'RENOVACAO_LAS'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Renovação de LAS
+          </button>
+          <button
+            type="button"
+            onClick={() => handleMudarModalidade('BAIXA_LICENCA')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              modalidadeAtiva === 'BAIXA_LICENCA'
+                ? 'bg-rose-700 text-white shadow-sm'
+                : 'bg-white text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <PowerOff className="w-3.5 h-3.5" />
+            Baixa de Licença Ambiental
+          </button>
+          <button
+            type="button"
+            onClick={() => handleMudarModalidade('LAS')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              modalidadeAtiva === 'LAS'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Nova LAS
+          </button>
+        </div>
+      </div>
+
+      {/* ALERTA INTELIGENTE PARA BAIXA DETECTADA EM ARQUIVOS */}
+      {alertaDetectadoBaixa && (
+        <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <span>
+              <strong>Documento de Baixa Detectado:</strong> Foram identificados arquivos de encerramento/desativação. Deseja alternar a análise para <strong>Baixa de Licença Ambiental</strong>?
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleMudarModalidade('BAIXA_LICENCA')}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs whitespace-nowrap shadow-sm"
+          >
+            Alternar para Baixa de Licença
+          </button>
+        </div>
+      )}
+
+      {/* CAIXA DE UPLOAD (DRAG & DROP) */}
       <div
         onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
@@ -187,15 +283,15 @@ ${resultadoAuditoria.resumoParecer}`;
           Anexe aqui os documentos ou o PDF consolidado do processo SIS-SEDUR
         </h3>
         <p className="text-xs text-slate-500 mt-1 max-w-lg mx-auto">
-          Arraste e solte arquivos individuais ou arquivos unificados (PDF24). A auditoria confere automaticamente os itens da <strong>{modalidade.replace('_', ' ')}</strong>.
+          Arraste e solte arquivos individuais ou arquivos unificados (PDF24). A auditoria confere automaticamente os itens da <strong>{modalidadeAtiva.replace('_', ' ')}</strong>.
         </p>
       </div>
 
-      {/* Caixa de Adição Rápida de Documentos Contidos em PDF Unificado */}
-      <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2 text-blue-900 font-semibold">
+      {/* DECLARAÇÃO DE DOCUMENTOS EM PDF UNIFICADO (PDF24) */}
+      <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-blue-950 font-semibold">
           <Layers className="w-5 h-5 text-blue-600 flex-shrink-0" />
-          <span>Juntou tudo em um único arquivo (ex: PDF24)? Declare um documento contido nele:</span>
+          <span>Juntou os autos em um único arquivo (ex: PDF24)? Declare um documento contido nele:</span>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -204,7 +300,7 @@ ${resultadoAuditoria.resumoParecer}`;
               handleAdicionarItemAoPdfUnificado(e.target.value);
               e.target.value = "";
             }}
-            className="rounded-lg border-blue-300 bg-white text-slate-800 text-xs py-1.5 px-2.5 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-lg border-blue-300 bg-white text-slate-800 text-xs py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="" disabled>Selecionar documento do PDF...</option>
             {checklistDisponivel.map(item => (
@@ -214,7 +310,7 @@ ${resultadoAuditoria.resumoParecer}`;
         </div>
       </div>
 
-      {/* Lista de Documentos Anexados com Seletor Manual */}
+      {/* LISTA DE DOCUMENTOS ANEXADOS COM SELETOR MANUAL */}
       {anexos.length > 0 && (
         <div className="bg-white border rounded-2xl p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b pb-3">
@@ -258,7 +354,7 @@ ${resultadoAuditoria.resumoParecer}`;
                   <select
                     value={doc.itemChecklistId || ''}
                     onChange={(e) => handleAlterarItemManual(doc.id, e.target.value)}
-                    className="text-xs rounded-lg border-slate-300 py-1 px-2 text-slate-700 bg-white focus:ring-blue-500 focus:border-blue-500 font-medium"
+                    className="text-xs rounded-lg border-slate-300 py-1 px-2.5 text-slate-700 bg-white focus:ring-blue-500 focus:border-blue-500 font-medium max-w-[260px] truncate"
                   >
                     <option value="">Não identificado / Outros</option>
                     {checklistDisponivel.map(item => (
@@ -281,7 +377,7 @@ ${resultadoAuditoria.resumoParecer}`;
         </div>
       )}
 
-      {/* Painel de Resultado da Auditoria Documental */}
+      {/* PAINEL DE RESULTADO DA AUDITORIA DOCUMENTAL DA SEDUR */}
       {resultadoAuditoria && (
         <div className="bg-white border-2 border-slate-900 rounded-2xl shadow-lg p-6 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
@@ -291,7 +387,7 @@ ${resultadoAuditoria.resumoParecer}`;
               </span>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Scale className="w-5 h-5 text-blue-600" />
-                Conformidade com o Checklist SEDUR Camaçari
+                Conformidade com o Checklist SEDUR Camaçari ({modalidadeAtiva.replace('_', ' ')})
               </h3>
             </div>
 
@@ -310,7 +406,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           </div>
 
-          {/* Métricas */}
+          {/* MÉTRICAS DA AUDITORIA */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 font-mono">
               <span className="text-slate-500 block text-[10px]">ANEXOS ANALISADOS</span>
@@ -330,7 +426,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           </div>
 
-          {/* Pendências */}
+          {/* LISTA DE PENDÊNCIAS OBRIGATÓRIAS */}
           {resultadoAuditoria.pendentesObrigatorios.length > 0 && (
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
               <h5 className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
@@ -345,7 +441,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           )}
 
-          {/* Ressalvas */}
+          {/* RESSALVAS TÉCNICAS E DIRETRIZES */}
           {resultadoAuditoria.ressalvasIdentificadas.length > 0 && (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5">
               <h5 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
@@ -360,12 +456,23 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           )}
 
-          {/* Ações */}
+          {/* ENQUADRAMENTO LEGAL E CONCLUSÃO SUGERIDA */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+              Enquadramento Legal e Conclusão Técnica Sugerida:
+            </label>
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 leading-relaxed font-mono space-y-2">
+              <p><strong>Fundamentação:</strong> {resultadoAuditoria.fundamentacaoLegal}</p>
+              <p><strong>Parecer:</strong> {resultadoAuditoria.resumoParecer}</p>
+            </div>
+          </div>
+
+          {/* BOTÕES DE AÇÃO INTEGRADA */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
             <button
               type="button"
               onClick={handleCopiarTextoAuditoria}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
             >
               {copiado ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
               {copiado ? 'Relatório Copiado!' : 'Copiar Relatório de Análise'}
@@ -380,7 +487,7 @@ ${resultadoAuditoria.resumoParecer}`;
                     onAplicarChecklist(atendidos);
                     alert(`${atendidos.length} itens foram marcados automaticamente no checklist do formulário.`);
                   }}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Marcar no Formulário
@@ -391,7 +498,7 @@ ${resultadoAuditoria.resumoParecer}`;
                 <button
                   type="button"
                   onClick={() => onTransferirParaParecer(resultadoAuditoria)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
                 >
                   Avançar para Parecer <ArrowRight className="w-4 h-4" />
                 </button>
