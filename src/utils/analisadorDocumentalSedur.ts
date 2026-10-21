@@ -111,7 +111,7 @@ export function executarAuditoriaDocumentalSedur(
     pendentesObrigatorios,
     ressalvasIdentificadas: ressalvas,
     aptoParaDeferimento,
-    encaminhamentoSugerido: aptoParaDeferimento ? 'DEFERIMENTO' : 'DILIGENCIA', // <--- PROPRIEDADE OBRIGATÓRIA ADICIONADA
+    encaminhamentoSugerido: aptoParaDeferimento ? 'DEFERIMENTO' : 'DILIGENCIA_EXTERNA', // <--- PROPRIEDADE OBRIGATÓRIA ADICIONADA
     fundamentacaoLegal,
     resumoParecer
   };
