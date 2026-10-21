@@ -47,7 +47,6 @@ export const AnalisadorDocumental: React.FC<AnalisadorDocumentalProps> = ({
   const [alertaDetectadoBaixa, setAlertaDetectadoBaixa] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sincroniza se a prop modalidade for alterada no componente pai
   useEffect(() => {
     if (modalidadeInicial && modalidadeInicial !== modalidadeAtiva) {
       setModalidadeAtiva(modalidadeInicial);
@@ -96,7 +95,7 @@ export const AnalisadorDocumental: React.FC<AnalisadorDocumentalProps> = ({
         tipoMime: file.type || 'application/pdf',
         dataUpload: new Date().toISOString(),
         categoriaIdentificada: analisePrevia.categoria,
-        itemChecklistId: analisePrevia.itemChecklist,
+        itemChecklistId: analisePrevia.itemChecklist || undefined, // <--- Evita null
         statusConformidade: analisePrevia.status,
         observacoesAnalise: analisePrevia.observacao,
       };
@@ -114,13 +113,13 @@ export const AnalisadorDocumental: React.FC<AnalisadorDocumentalProps> = ({
   const handleAlterarItemManual = (anexoId: string, itemChecklistId: string) => {
     const itemEncontrado = checklistDisponivel.find(i => i.id === itemChecklistId);
     
-    const atualizados = anexos.map(anexo => {
+    const atualizados: DocumentoAnexado[] = anexos.map(anexo => {
       if (anexo.id === anexoId) {
         return {
           ...anexo,
-          itemChecklistId: itemChecklistId || null,
+          itemChecklistId: itemChecklistId ? itemChecklistId : undefined, // <--- Evita null
           categoriaIdentificada: itemEncontrado ? itemEncontrado.nome.split(' ')[0].toUpperCase() : 'MANUAL',
-          statusConformidade: itemChecklistId ? ('CONFORME' as const) : ('PENDENTE' as const),
+          statusConformidade: itemChecklistId ? 'CONFORME' : 'PENDENTE',
           observacoesAnalise: itemEncontrado ? `Classificado manualmente como: ${itemEncontrado.nome}` : 'Aguardando classificação'
         };
       }
@@ -239,7 +238,7 @@ ${resultadoAuditoria.resumoParecer}`;
         </div>
       </div>
 
-      {/* ALERTA INTELIGENTE PARA BAIXA DETECTADA EM ARQUIVOS */}
+      {/* ALERTA INTELIGENTE PARA BAIXA DETECTADA */}
       {alertaDetectadoBaixa && (
         <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950">
           <div className="flex items-center gap-2">
@@ -258,7 +257,7 @@ ${resultadoAuditoria.resumoParecer}`;
         </div>
       )}
 
-      {/* CAIXA DE UPLOAD (DRAG & DROP) */}
+      {/* CAIXA DE UPLOAD */}
       <div
         onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
@@ -287,7 +286,7 @@ ${resultadoAuditoria.resumoParecer}`;
         </p>
       </div>
 
-      {/* DECLARAÇÃO DE DOCUMENTOS EM PDF UNIFICADO (PDF24) */}
+      {/* DECLARAÇÃO DE DOCUMENTOS EM PDF UNIFICADO */}
       <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2 text-blue-950 font-semibold">
           <Layers className="w-5 h-5 text-blue-600 flex-shrink-0" />
@@ -310,7 +309,7 @@ ${resultadoAuditoria.resumoParecer}`;
         </div>
       </div>
 
-      {/* LISTA DE DOCUMENTOS ANEXADOS COM SELETOR MANUAL */}
+      {/* LISTA DE ANEXOS */}
       {anexos.length > 0 && (
         <div className="bg-white border rounded-2xl p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b pb-3">
@@ -377,7 +376,7 @@ ${resultadoAuditoria.resumoParecer}`;
         </div>
       )}
 
-      {/* PAINEL DE RESULTADO DA AUDITORIA DOCUMENTAL DA SEDUR */}
+      {/* PAINEL DE AUDITORIA */}
       {resultadoAuditoria && (
         <div className="bg-white border-2 border-slate-900 rounded-2xl shadow-lg p-6 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
@@ -406,7 +405,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           </div>
 
-          {/* MÉTRICAS DA AUDITORIA */}
+          {/* MÉTRICAS */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 font-mono">
               <span className="text-slate-500 block text-[10px]">ANEXOS ANALISADOS</span>
@@ -426,7 +425,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           </div>
 
-          {/* LISTA DE PENDÊNCIAS OBRIGATÓRIAS */}
+          {/* PENDÊNCIAS */}
           {resultadoAuditoria.pendentesObrigatorios.length > 0 && (
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
               <h5 className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
@@ -441,7 +440,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           )}
 
-          {/* RESSALVAS TÉCNICAS E DIRETRIZES */}
+          {/* RESSALVAS */}
           {resultadoAuditoria.ressalvasIdentificadas.length > 0 && (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5">
               <h5 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
@@ -456,7 +455,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           )}
 
-          {/* ENQUADRAMENTO LEGAL E CONCLUSÃO SUGERIDA */}
+          {/* ENQUADRAMENTO LEGAL */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
               Enquadramento Legal e Conclusão Técnica Sugerida:
@@ -467,7 +466,7 @@ ${resultadoAuditoria.resumoParecer}`;
             </div>
           </div>
 
-          {/* BOTÕES DE AÇÃO INTEGRADA */}
+          {/* AÇÕES */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
             <button
               type="button"
