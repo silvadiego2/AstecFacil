@@ -1,6 +1,6 @@
 // src/utils/analisadorDocumentalSedur.ts
 import { DocumentoAnexado, ResultadoAuditoriaSedur } from '../types/analiseDocumental';
-import { CHECKLIST_SEDUR_EXIGENCIAS, ItemChecklistExigencia } from './constants';
+import { CHECKLIST_SEDUR_EXIGENCIAS } from './constants';
 
 export function normalizarTexto(texto: string): string {
   return texto
@@ -13,13 +13,13 @@ export function normalizarTexto(texto: string): string {
 export function classificarArquivoAnexado(nomeArquivo: string, modalidade: string = 'RENOVACAO_LAS') {
   const nomeNorm = normalizarTexto(nomeArquivo);
 
-  // Verificação de PDF Unificado (Ex: PDF24, processo completo, etc.)
+  // Verificação de PDF Unificado (PDF24 / compilado)
   if (
     nomeNorm.includes('pdf24') || 
     nomeNorm.includes('unido') || 
     nomeNorm.includes('completo') || 
     nomeNorm.includes('juntado') ||
-    nomeNorm.includes('processo_')
+    nomeNorm.includes('processo')
   ) {
     return {
       categoria: 'ARQUIVO_UNIFICADO',
@@ -29,6 +29,7 @@ export function classificarArquivoAnexado(nomeArquivo: string, modalidade: strin
     };
   }
 
+  // Busca no checklist da modalidade atual
   const checklist = CHECKLIST_SEDUR_EXIGENCIAS[modalidade] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
 
   for (const item of checklist) {
@@ -57,9 +58,11 @@ export function executarAuditoriaDocumentalSedur(
   modalidade: string,
   setorDestino: string
 ): ResultadoAuditoriaSedur {
-  const checklist = CHECKLIST_SEDUR_EXIGENCIAS[modalidade] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
-  const itensAtendidosIds = new Set(anexos.filter(a => a.itemChecklistId).map(a => a.itemChecklistId));
+  const isBaixa = modalidade === 'BAIXA_LICENCA' || modalidade === 'BAIXA';
+  const checklistKey = isBaixa ? 'BAIXA_LICENCA' : (CHECKLIST_SEDUR_EXIGENCIAS[modalidade] ? modalidade : 'RENOVACAO_LAS');
+  const checklist = CHECKLIST_SEDUR_EXIGENCIAS[checklistKey] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
 
+  const itensAtendidosIds = new Set(anexos.filter(a => a.itemChecklistId).map(a => a.itemChecklistId));
   const obrigatorios = checklist.filter(item => item.obrigatorio);
   const pendentesObrigatorios: string[] = [];
 
@@ -70,23 +73,37 @@ export function executarAuditoriaDocumentalSedur(
   });
 
   const ressalvas: string[] = [];
-  
-  // Regras de negócio especializadas SEDUR Camaçari
-  if (modalidade === 'RENOVACAO_LAS') {
+
+  // Enquadramento e Regras Específicas
+  if (isBaixa) {
+    ressalvas.push('Condicionante de Eficácia: A expedição da Certidão/Portaria de Baixa e Cancelamento de Licença fica estritamente condicionada à realização de Vistoria Técnica In Loco pela fiscalização ambiental da SEDUR para comprovação da completa desmobilização das atividades e ausência de contaminação de solo ou corpos hídricos.');
+    ressalvas.push('Passivos e PRAD: Verificar a quitação integral de multas, notificações pretéritas e comprovação do cumprimento das obrigações do PRAD final.');
+  } else if (modalidade === 'RENOVACAO_LAS') {
     if (!itensAtendidosIds.has('doc-cnd-municipal')) {
-      ressalvas.push('Ausência de CND Municipal: Exigência vinculada ao art. 154 da LC nº 1.876/2023.');
+      ressalvas.push('Ausência de CND Municipal: Exigência vinculada ao art. 154 da Lei Complementar Municipal nº 1.876/2023.');
     }
     if (!itensAtendidosIds.has('doc-procuracao')) {
-      ressalvas.push('Verificar juntada do documento oficial com foto do procurador (RG/CNH).');
+      ressalvas.push('Juntada de documento de identificação civil com foto (RG/CNH) do procurador outorgado.');
     }
     if (!itensAtendidosIds.has('doc-rcc')) {
-      ressalvas.push('Necessário verificar cumprimento integral das condicionantes da licença anterior.');
+      ressalvas.push('Comprovação do atendimento às condicionantes da licença anterior (Relatório de Cumprimento de Condicionantes - RCC).');
     }
-  } else if (modalidade === 'BAIXA_LICENCA') {
-    ressalvas.push('A baixa definitiva da licença depende de vistoria in loco para confirmação de desativação sem passivos.');
   }
 
   const aptoParaDeferimento = pendentesObrigatorios.length === 0;
+
+  // Enquadramento Legal Especializado para Baixa
+  const fundamentacaoLegal = isBaixa
+    ? 'ENQUADRAMENTO LEGAL: BAIXA E CANCELAMENTO DE LICENÇA AMBIENTAL por desativação/encerramento de atividade, com fulcro na Lei Complementar Municipal nº 1.876/2023 (Código Ambiental de Camaçari), arts. 138 a 140 do Decreto Estadual nº 14.024/2012 e Resolução CEPRAM nº 4.579/2018.'
+    : 'ENQUADRAMENTO LEGAL: RENOVAÇÃO DE LICENÇA AMBIENTAL SIMPLIFICADA (RLA), com fulcro no art. 154 da Lei Complementar Municipal nº 1.876/2023 (Código Ambiental de Camaçari) e Resolução CEPRAM nº 4.579/2018.';
+
+  const resumoParecer = isBaixa
+    ? (aptoParaDeferimento
+        ? `PARECER TÉCNICO CONCLUSIVO (${setorDestino}): Instrução documental de BAIXA DE LICENÇA regular. Empreendedor apresentou Requerimento de Desativação, Termo de Encerramento e comprovações de desmobilização. OPINA-SE pelo DEFERIMENTO DA BAIXA E CANCELAMENTO do ato autorizativo, mediante homologação da vistoria técnica final de desativação.`
+        : `PARECER TÉCNICO (${setorDestino}): Requerimento de BAIXA DE LICENÇA AMBIENTAL com pendência de documentos essenciais para comprovação de encerramento e ausência de passivos ambientais. Sugere-se notificação do interessado no SIS-SEDUR.`)
+    : (aptoParaDeferimento
+        ? `Processo instruído com todos os documentos essenciais exigidos pela SEDUR (${setorDestino}). Apto para deferimento da renovação.`
+        : `Identificadas ${pendentesObrigatorios.length} pendências documentais obrigatórias. Sugere-se notificação do requerente no SIS-SEDUR.`);
 
   return {
     totalAnexados: anexos.length,
@@ -95,11 +112,7 @@ export function executarAuditoriaDocumentalSedur(
     pendentesObrigatorios,
     ressalvasIdentificadas: ressalvas,
     aptoParaDeferimento,
-    fundamentacaoLegal: modalidade === 'BAIXA_LICENCA'
-      ? 'Lei Complementar Municipal nº 1.876/2023 (Código Ambiental de Camaçari) e Resolução CEPRAM nº 4.579/2018.'
-      : 'Art. 154 da Lei Complementar Municipal nº 1.876/2023 e Resolução CEPRAM nº 4.579/2018.',
-    resumoParecer: aptoParaDeferimento
-      ? `Processo instruído com todos os documentos essenciais exigidos pela SEDUR (${setorDestino}). Apto para prosseguimento do parecer.`
-      : `Identificadas ${pendentesObrigatorios.length} pendências documentais obrigatórias. Sugere-se notificação do requerente no SIS-SEDUR.`
+    fundamentacaoLegal,
+    resumoParecer
   };
 }
