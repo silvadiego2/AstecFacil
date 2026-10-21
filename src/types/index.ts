@@ -1,8 +1,14 @@
 // src/types/index.ts
 
-export type ModalidadeLicenca = 'DISPENSA' | 'LAS' | 'INEXIGIBILIDADE' | 'RENOVACAO_LAS';
+export type ModalidadeLicenca = 
+  | 'DISPENSA' 
+  | 'LAS' 
+  | 'INEXIGIBILIDADE' 
+  | 'RENOVACAO_LAS'
+  | 'BAIXA_LICENCA'; // <--- ADICIONADO
+
 export type StatusParecer = 'DEFERIMENTO' | 'INDEFERIMENTO' | 'DILIGENCIA';
-export type TipoSolicitacao = 'NOVA_LICENCA' | 'RENOVACAO';
+export type TipoSolicitacao = 'NOVA_LICENCA' | 'RENOVACAO' | 'BAIXA'; // <--- ADICIONADO 'BAIXA'
 export type DestinatarioParecer = 'CLA' | 'CLU' | 'GABINETE';
 
 export type TipologiaAtividade = 
@@ -58,6 +64,9 @@ export interface ProcessoFormData {
   texto_parecer: string;
   possui_atividade_industrial: boolean;
   declaracao_artesanal_bancada: boolean;
+  // Campos específicos para Renovação e Baixa de Licença
+  data_validade_licenca_anterior?: string;
+  motivo_baixa?: string;
 }
 
 // TIPOS PARA O MÓDULO DE COMUNICAÇÃO EXTERNA E PRAZOS
@@ -74,10 +83,10 @@ export interface ComunicacaoExterna {
   id: string;
   numero_processo: string;
   interessado: string;
-  setor_origem: string; // Ex: CLA, CLU, GABINETE
-  data_envio: string; // Data início (YYYY-MM-DD)
-  prazo_dias: number; // Ex: 30, 60
-  data_limite: string; // Prazo fatal (YYYY-MM-DD)
+  setor_origem: string;
+  data_envio: string;
+  prazo_dias: number;
+  data_limite: string;
   documentos: DocumentoNotificacao[];
   observacoes?: string;
   created_at: string;
