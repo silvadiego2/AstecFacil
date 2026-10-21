@@ -23,13 +23,12 @@ export function classificarArquivoAnexado(nomeArquivo: string, modalidade: strin
   ) {
     return {
       categoria: 'ARQUIVO_UNIFICADO',
-      itemChecklist: null,
+      itemChecklist: undefined, // <--- Corrigido de null para undefined
       status: 'PENDENTE' as const,
       observacao: 'PDF unificado identificado. Selecione manualmente os documentos contidos no arquivo.'
     };
   }
 
-  // Busca no checklist da modalidade atual
   const checklist = CHECKLIST_SEDUR_EXIGENCIAS[modalidade] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
 
   for (const item of checklist) {
@@ -47,7 +46,7 @@ export function classificarArquivoAnexado(nomeArquivo: string, modalidade: strin
 
   return {
     categoria: 'NAO_IDENTIFICADO',
-    itemChecklist: null,
+    itemChecklist: undefined, // <--- Corrigido de null para undefined
     status: 'PENDENTE' as const,
     observacao: 'Nomenclatura não reconhecida. Selecione o tipo correspondente na lista.'
   };
@@ -62,7 +61,9 @@ export function executarAuditoriaDocumentalSedur(
   const checklistKey = isBaixa ? 'BAIXA_LICENCA' : (CHECKLIST_SEDUR_EXIGENCIAS[modalidade] ? modalidade : 'RENOVACAO_LAS');
   const checklist = CHECKLIST_SEDUR_EXIGENCIAS[checklistKey] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
 
-  const itensAtendidosIds = new Set(anexos.filter(a => a.itemChecklistId).map(a => a.itemChecklistId));
+  const itensAtendidosIds = new Set(
+    anexos.filter(a => a.itemChecklistId).map(a => a.itemChecklistId as string)
+  );
   const obrigatorios = checklist.filter(item => item.obrigatorio);
   const pendentesObrigatorios: string[] = [];
 
@@ -74,7 +75,6 @@ export function executarAuditoriaDocumentalSedur(
 
   const ressalvas: string[] = [];
 
-  // Enquadramento e Regras Específicas
   if (isBaixa) {
     ressalvas.push('Condicionante de Eficácia: A expedição da Certidão/Portaria de Baixa e Cancelamento de Licença fica estritamente condicionada à realização de Vistoria Técnica In Loco pela fiscalização ambiental da SEDUR para comprovação da completa desmobilização das atividades e ausência de contaminação de solo ou corpos hídricos.');
     ressalvas.push('Passivos e PRAD: Verificar a quitação integral de multas, notificações pretéritas e comprovação do cumprimento das obrigações do PRAD final.');
@@ -92,7 +92,6 @@ export function executarAuditoriaDocumentalSedur(
 
   const aptoParaDeferimento = pendentesObrigatorios.length === 0;
 
-  // Enquadramento Legal Especializado para Baixa
   const fundamentacaoLegal = isBaixa
     ? 'ENQUADRAMENTO LEGAL: BAIXA E CANCELAMENTO DE LICENÇA AMBIENTAL por desativação/encerramento de atividade, com fulcro na Lei Complementar Municipal nº 1.876/2023 (Código Ambiental de Camaçari), arts. 138 a 140 do Decreto Estadual nº 14.024/2012 e Resolução CEPRAM nº 4.579/2018.'
     : 'ENQUADRAMENTO LEGAL: RENOVAÇÃO DE LICENÇA AMBIENTAL SIMPLIFICADA (RLA), com fulcro no art. 154 da Lei Complementar Municipal nº 1.876/2023 (Código Ambiental de Camaçari) e Resolução CEPRAM nº 4.579/2018.';
@@ -112,6 +111,7 @@ export function executarAuditoriaDocumentalSedur(
     pendentesObrigatorios,
     ressalvasIdentificadas: ressalvas,
     aptoParaDeferimento,
+    encaminhamentoSugerido: aptoParaDeferimento ? 'DEFERIMENTO' : 'DILIGENCIA', // <--- PROPRIEDADE OBRIGATÓRIA ADICIONADA
     fundamentacaoLegal,
     resumoParecer
   };
