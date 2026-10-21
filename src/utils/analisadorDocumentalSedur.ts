@@ -1,200 +1,105 @@
 // src/utils/analisadorDocumentalSedur.ts
 import { DocumentoAnexado, ResultadoAuditoriaSedur } from '../types/analiseDocumental';
+import { CHECKLIST_SEDUR_EXIGENCIAS, ItemChecklistExigencia } from './constants';
 
-/**
- * Padrões de reconhecimento de documentos ambientais da SEDUR Camaçari
- */
-const PADROES_DOCS_SEDUR: {
-  termoChave: RegExp;
-  itemChecklist: string;
-  categoria: string;
-  obrigatorioPadrao: boolean;
-  regraEspecial?: string;
-}[] = [
-  {
-    termoChave: /requerimento|formulario.*requerente|solicitacao/i,
-    itemChecklist: 'Requerimento Padrão do SIS-SEDUR',
-    categoria: 'Formalização',
-    obrigatorioPadrao: true,
-  },
-  {
-    termoChave: /cnpj|cartao.*cnpj|comprovante.*inscricao/i,
-    itemChecklist: 'Cartão CNPJ Atualizado',
-    categoria: 'Identificação',
-    obrigatorioPadrao: true,
-  },
-  {
-    termoChave: /contrato.*social|estatuto|requerimento.*empresario|alteracao.*contratual/i,
-    itemChecklist: 'Ato Constitutivo (Contrato Social / Estatuto)',
-    categoria: 'Identificação',
-    obrigatorioPadrao: true,
-  },
-  {
-    termoChave: /procuracao|mandato|substabelecimento/i,
-    itemChecklist: 'Procuração com poderes específicos e documentos do procurador',
-    categoria: 'Representação',
-    obrigatorioPadrao: false,
-  },
-  {
-    termoChave: /matricula|rgi|certidao.*onus|escritura|registro.*imoveis/i,
-    itemChecklist: 'Certidão de Matrícula e Ônus Reais do RGI',
-    categoria: 'Dominialidade',
-    obrigatorioPadrao: true,
-    regraEspecial: 'Pode ser substituída por Contrato de Locação com firmas reconhecidas.',
-  },
-  {
-    termoChave: /contrato.*locacao|aluguel|arrendamento|cessao.*uso/i,
-    itemChecklist: 'Contrato de Locação / Posse Legítima',
-    categoria: 'Dominialidade',
-    obrigatorioPadrao: false,
-    regraEspecial: 'Exige reconhecimento de firma das partes e prova dominial do locador.',
-  },
-  {
-    termoChave: /viabilidade|uso.*solo|consulta.*previa|certidao.*zoneamento/i,
-    itemChecklist: 'Certidão de Viabilidade de Localização e Uso do Solo (SEDUR)',
-    categoria: 'Urbanístico',
-    obrigatorioPadrao: true,
-  },
-  {
-    termoChave: /memorial.*descritivo|relatorio.*atividades|caracterizacao/i,
-    itemChecklist: 'Memorial Descritivo da Atividade e Processos Produtivos',
-    categoria: 'Técnico Ambiental',
-    obrigatorioPadrao: true,
-  },
-  {
-    termoChave: /planta|layout|projeto.*arquitetonico|croqui/i,
-    itemChecklist: 'Planta de Localização e Layout do Empreendimento',
-    categoria: 'Projetos',
-    obrigatorioPadrao: true,
-  },
-  {
-    termoChave: /pgrs|residuos.*solidos|plano.*gerenciamento/i,
-    itemChecklist: 'Plano de Gerenciamento de Resíduos Sólidos (PGRS) com ART/RRT',
-    categoria: 'Técnico Ambiental',
-    obrigatorioPadrao: false,
-  },
-  {
-    termoChave: /embasa|esgoto|concessionaria.*agua|fossa|sumidouro/i,
-    itemChecklist: 'Declaração da Concessionária (EMBASA) ou ART de Fossa Séptica',
-    categoria: 'Infraestrutura',
-    obrigatorioPadrao: true,
-    regraEspecial: 'Na ausência de rede de esgoto da EMBASA, apresentar ART de fossa e sumidouro.',
-  },
-  {
-    termoChave: /coelba|energia|neoenergia|conta.*luz/i,
-    itemChecklist: 'Comprovante de Energia Elétrica (Neoenergia Coelba)',
-    categoria: 'Infraestrutura',
-    obrigatorioPadrao: false,
-  },
-  {
-    termoChave: /bombeiros|avcb|clcb|panico/i,
-    itemChecklist: 'Certificado do Corpo de Bombeiros (AVCB)',
-    categoria: 'Segurança',
-    obrigatorioPadrao: false,
-    regraEspecial: 'ATENÇÃO: Conforme diretriz da CLA/SEDUR, o AVCB NÃO é obrigatório para Licenciamento Ambiental Ordinário.',
-  },
-];
+export function normalizarTexto(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '_');
+}
 
-/**
- * Classifica um arquivo anexado pelo nome e metadados
- */
-export function classificarArquivoAnexado(arquivoNome: string): {
-  itemChecklist: string;
-  categoria: string;
-  observacao: string;
-  status: 'CONFORME' | 'RESSALVA';
-} {
-  const achado = PADROES_DOCS_SEDUR.find(p => p.termoChave.test(arquivoNome));
+export function classificarArquivoAnexado(nomeArquivo: string, modalidade: string = 'RENOVACAO_LAS') {
+  const nomeNorm = normalizarTexto(nomeArquivo);
 
-  if (achado) {
-    if (achado.termoChave.test('bombeiros') || achado.termoChave.test('avcb')) {
-      return {
-        itemChecklist: achado.itemChecklist,
-        categoria: achado.categoria,
-        observacao: 'Documento informativo anexado. Ressalta-se que o AVCB não é condicionante obrigatória na CLA/SEDUR.',
-        status: 'CONFORME',
-      };
-    }
-
+  // Verificação de PDF Unificado (Ex: PDF24, processo completo, etc.)
+  if (
+    nomeNorm.includes('pdf24') || 
+    nomeNorm.includes('unido') || 
+    nomeNorm.includes('completo') || 
+    nomeNorm.includes('juntado') ||
+    nomeNorm.includes('processo_')
+  ) {
     return {
-      itemChecklist: achado.itemChecklist,
-      categoria: achado.categoria,
-      observacao: achado.regraEspecial || 'Documento preliminarmente identificado como compatível.',
-      status: 'CONFORME',
+      categoria: 'ARQUIVO_UNIFICADO',
+      itemChecklist: null,
+      status: 'PENDENTE' as const,
+      observacao: 'PDF unificado identificado. Selecione manualmente os documentos contidos no arquivo.'
     };
   }
 
+  const checklist = CHECKLIST_SEDUR_EXIGENCIAS[modalidade] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
+
+  for (const item of checklist) {
+    for (const sinonimo of item.sinonimos) {
+      if (nomeNorm.includes(normalizarTexto(sinonimo))) {
+        return {
+          categoria: item.nome.split(' ')[0].toUpperCase(),
+          itemChecklist: item.id,
+          status: 'CONFORME' as const,
+          observacao: `Identificado automaticamente como: ${item.nome}`
+        };
+      }
+    }
+  }
+
   return {
-    itemChecklist: 'Documento Complementar Não Categorizado',
-    categoria: 'Geral',
-    observacao: 'Verificar manualmente o conteúdo para vinculação à exigência legal.',
-    status: 'RESSALVA',
+    categoria: 'NAO_IDENTIFICADO',
+    itemChecklist: null,
+    status: 'PENDENTE' as const,
+    observacao: 'Nomenclatura não reconhecida. Selecione o tipo correspondente na lista.'
   };
 }
 
-/**
- * Realiza a auditoria completa do processo com base na legislação de Camaçari
- */
 export function executarAuditoriaDocumentalSedur(
   anexos: DocumentoAnexado[],
-  modalidade: string = 'LAS',
-  setor: string = 'CLA'
+  modalidade: string,
+  setorDestino: string
 ): ResultadoAuditoriaSedur {
-  const itensObrigatoriosBase = [
-    'Requerimento Padrão do SIS-SEDUR',
-    'Cartão CNPJ Atualizado',
-    'Ato Constitutivo (Contrato Social / Estatuto)',
-    'Certidão de Matrícula e Ônus Reais do RGI',
-    'Certidão de Viabilidade de Localização e Uso do Solo (SEDUR)',
-    'Memorial Descritivo da Atividade e Processos Produtivos',
-    'Planta de Localização e Layout do Empreendimento',
-    'Declaração da Concessionária (EMBASA) ou ART de Fossa Séptica',
-  ];
+  const checklist = CHECKLIST_SEDUR_EXIGENCIAS[modalidade] || CHECKLIST_SEDUR_EXIGENCIAS['RENOVACAO_LAS'];
+  const itensAtendidosIds = new Set(anexos.filter(a => a.itemChecklistId).map(a => a.itemChecklistId));
 
-  const docsIdentificadosNomes = anexos.map(a => a.itemChecklistId || a.categoriaIdentificada || '');
+  const obrigatorios = checklist.filter(item => item.obrigatorio);
+  const pendentesObrigatorios: string[] = [];
 
-  // Validação dominial flexível (RGI ou Contrato de Locação)
-  const temRgi = docsIdentificadosNomes.some(n => /matr[íi]cula|rgi|ônus/i.test(n));
-  const temLocacao = docsIdentificadosNomes.some(n => /loca[çc][ãa]o|posse/i.test(n));
-  const dominialidadeAtendida = temRgi || temLocacao;
-
-  // Checa pendências da lista obrigatória
-  const pendencias: string[] = [];
-  itensObrigatoriosBase.forEach(obrig => {
-    if (obrig.includes('Matrícula') && dominialidadeAtendida) {
-      return; // Atendido por RGI ou Locação
-    }
-    const presente = docsIdentificadosNomes.some(d => d.toLowerCase() === obrig.toLowerCase());
-    if (!presente) {
-      pendencias.push(obrig);
+  obrigatorios.forEach(item => {
+    if (!itensAtendidosIds.has(item.id)) {
+      pendentesObrigatorios.push(item.nome);
     }
   });
 
   const ressalvas: string[] = [];
-  if (temLocacao && !temRgi) {
-    ressalvas.push('Comprovação dominial via Contrato de Locação: Certificar firmas reconhecidas e legitimidade do locador.');
+  
+  // Regras de negócio especializadas SEDUR Camaçari
+  if (modalidade === 'RENOVACAO_LAS') {
+    if (!itensAtendidosIds.has('doc-cnd-municipal')) {
+      ressalvas.push('Ausência de CND Municipal: Exigência vinculada ao art. 154 da LC nº 1.876/2023.');
+    }
+    if (!itensAtendidosIds.has('doc-procuracao')) {
+      ressalvas.push('Verificar juntada do documento oficial com foto do procurador (RG/CNH).');
+    }
+    if (!itensAtendidosIds.has('doc-rcc')) {
+      ressalvas.push('Necessário verificar cumprimento integral das condicionantes da licença anterior.');
+    }
+  } else if (modalidade === 'BAIXA_LICENCA') {
+    ressalvas.push('A baixa definitiva da licença depende de vistoria in loco para confirmação de desativação sem passivos.');
   }
 
-  const apto = pendencias.length === 0;
-  const encaminhamento = apto ? 'DEFERIMENTO' : 'DILIGENCIA_EXTERNA';
-
-  const fundamentacao = modalidade.includes('DISPENSA') || modalidade.includes('DLA')
-    ? 'Art. 53, § 2º e Anexo IV da Lei Complementar nº 1.876/2023 c/c Resolução CEPRAM nº 4.579/2018.'
-    : 'Art. 51 e Anexo II da Lei Complementar nº 1.876/2023 (Código Ambiental de Camaçari) e LC nº 1.873/2023 (PDDU).';
-
-  const resumo = apto
-    ? `Constata-se a juntada integral da documentação obrigatória nos autos. O empreendimento atende aos requisitos formais, dominiais e ambientais da legislação municipal de Camaçari, opinando-se pelo DEFERIMENTO do ato com restituição dos autos à ${setor}.`
-    : `Verificou-se a ausência de ${pendencias.length} documento(s) obrigatório(s) para a regular instrução técnica. Opina-se pela NOTIFICAÇÃO DO INTERESSADO (Diligência via SIS-SEDUR) assinalando prazo regulamentar para saneamento.`;
+  const aptoParaDeferimento = pendentesObrigatorios.length === 0;
 
   return {
     totalAnexados: anexos.length,
-    totalObrigatorios: itensObrigatoriosBase.length,
-    atendidosObrigatorios: itensObrigatoriosBase.length - pendencias.length,
-    pendentesObrigatorios: pendencias,
+    totalObrigatorios: obrigatorios.length,
+    atendidosObrigatorios: obrigatorios.length - pendentesObrigatorios.length,
+    pendentesObrigatorios,
     ressalvasIdentificadas: ressalvas,
-    aptoParaDeferimento: apto,
-    encaminhamentoSugerido: encaminhamento,
-    fundamentacaoLegal: fundamentacao,
-    resumoParecer: resumo,
+    aptoParaDeferimento,
+    fundamentacaoLegal: modalidade === 'BAIXA_LICENCA'
+      ? 'Lei Complementar Municipal nº 1.876/2023 (Código Ambiental de Camaçari) e Resolução CEPRAM nº 4.579/2018.'
+      : 'Art. 154 da Lei Complementar Municipal nº 1.876/2023 e Resolução CEPRAM nº 4.579/2018.',
+    resumoParecer: aptoParaDeferimento
+      ? `Processo instruído com todos os documentos essenciais exigidos pela SEDUR (${setorDestino}). Apto para prosseguimento do parecer.`
+      : `Identificadas ${pendentesObrigatorios.length} pendências documentais obrigatórias. Sugere-se notificação do requerente no SIS-SEDUR.`
   };
 }
