@@ -51,7 +51,9 @@ export const TIPOS_ASSUNTOS_AMBIENTAIS: TipoAssuntoItem[] = [
   { id: 'LO', sigla: 'LO', nome: 'Licença de Operação (LO)', categoria: 'Licenciamento' },
   { id: 'LAS', sigla: 'LAS', nome: 'Licença Ambiental Simplificada (LAS)', categoria: 'Licenciamento' },
   { id: 'LAU', sigla: 'LAU', nome: 'Licença Ambiental Unificada (LAU)', categoria: 'Licenciamento' },
+  { id: 'LAA', sigla: 'LAA', nome: 'Licença Ambiental de Alteração (LAA)', categoria: 'Licenciamento' },
   { id: 'RENOVACAO', sigla: 'RLA', nome: 'Renovação de Licença Ambiental', categoria: 'Especiais' },
+  { id: 'BAIXA', sigla: 'BLA', nome: 'Baixa / Cancelamento de Licença Ambiental', categoria: 'Especiais' },
   { id: 'DISPENSA', sigla: 'DLA', nome: 'Dispensa de Licenciamento Ambiental (DLA)', categoria: 'Atos Declaratórios' },
   { id: 'INEXIGIBILIDADE', sigla: 'INEX', nome: 'Declaração de Inexigibilidade de Licença', categoria: 'Atos Declaratórios' },
   { id: 'AUTORIZACAO', sigla: 'AA', nome: 'Autorização Ambiental (AA)', categoria: 'Atos Declaratórios' },
@@ -69,8 +71,12 @@ export function obterEstiloAssunto(siglaOrId?: string): { bg: string; text: stri
     case 'LAS':
     case 'LAU':
       return { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-300' };
+    case 'LAA':
+      return { bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-300' };
     case 'RENOVACAO':
       return { bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-300' };
+    case 'BAIXA':
+      return { bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-300' };
     case 'DISPENSA':
     case 'INEXIGIBILIDADE':
       return { bg: 'bg-teal-50', text: 'text-teal-800', border: 'border-teal-300' };
