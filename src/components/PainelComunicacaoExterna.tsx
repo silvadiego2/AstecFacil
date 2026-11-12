@@ -22,9 +22,18 @@ import {
   Tag,
   Pencil,
   Eye,
-  Archive
+  Archive,
+  CloudUpload,
+  Loader2
 } from 'lucide-react';
 import { ComunicacaoExterna, DocumentoNotificacao } from '../types';
+import {
+  listarComunicacoesApi,
+  criarComunicacaoApi,
+  atualizarComunicacaoApi,
+  excluirComunicacaoApi,
+  ComunicacaoItem
+} from '../services/comunicacaoApi';
 
 // ==========================================
 // 1. PADRONIZAÇÃO DOS ATOS AMBIENTAIS
@@ -125,24 +134,67 @@ export const PainelComunicacaoExterna: React.FC = () => {
   const [textoPreview, setTextoPreview] = useState('');
   const [copiadoPreview, setCopiadoPreview] = useState(false);
 
-  // Carrega do LocalStorage
-  useEffect(() => {
+  const [carregandoBanco, setCarregandoBanco] = useState(true);
+  const [qtdLocaisParaMigrar, setQtdLocaisParaMigrar] = useState(0);
+  const [migrando, setMigrando] = useState(false);
+
+  const carregarDoBanco = async () => {
+    setCarregandoBanco(true);
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        setComunicacoes(JSON.parse(data));
+      const dados = await listarComunicacoesApi();
+      setComunicacoes(dados);
+    } catch (e: any) {
+      console.error(e);
+      alert('Erro ao carregar prazos do banco: ' + e.message);
+    } finally {
+      setCarregandoBanco(false);
+    }
+  };
+
+  // Carrega do banco Neon na Vercel e verifica se ha dados locais antigos para migrar
+  useEffect(() => {
+    carregarDoBanco();
+    try {
+      const locais = localStorage.getItem(STORAGE_KEY);
+      if (locais) {
+        const parsed = JSON.parse(locais);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setQtdLocaisParaMigrar(parsed.length);
+        }
       }
     } catch (e) {
       console.error(e);
     }
   }, []);
 
-  const salvarLista = (novaLista: typeof comunicacoes) => {
-    setComunicacoes(novaLista);
+  const handleMigrarDadosLocais = async () => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    setMigrando(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(novaLista));
-    } catch (e) {
-      console.error(e);
+      const locais: ComunicacaoItem[] = JSON.parse(raw);
+      for (const item of locais) {
+        await criarComunicacaoApi({
+          numero_processo: item.numero_processo,
+          interessado: item.interessado,
+          setor_origem: item.setor_origem,
+          tipo_assunto: item.tipo_assunto || 'LO',
+          qtd_prorrogacoes: item.qtd_prorrogacoes || 0,
+          data_envio: item.data_envio,
+          prazo_dias: item.prazo_dias,
+          data_limite: item.data_limite,
+          documentos: item.documentos,
+          observacoes: item.observacoes,
+        });
+      }
+      localStorage.removeItem(STORAGE_KEY);
+      setQtdLocaisParaMigrar(0);
+      await carregarDoBanco();
+      alert(`${locais.length} processo(s) enviados para a nuvem com sucesso!`);
+    } catch (e: any) {
+      alert('Erro ao migrar dados locais: ' + e.message);
+    } finally {
+      setMigrando(false);
     }
   };
 
@@ -336,7 +388,7 @@ Assessoria Técnica - ASTEC / SEDUR`;
     setTimeout(() => setCopiadoPreview(false), 2500);
   };
 
-  const handleSalvarComunicacao = () => {
+  const handleSalvarComunicacao = async () => {
     if (!novoProcesso.trim() || !novoInteressado.trim()) {
       alert('Informe o Número do Processo e o Interessado.');
       return;
@@ -349,26 +401,24 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
     const dataLimiteCalculada = calcularDataLimite(novaDataEnvio, novoPrazoDias);
 
-    if (editandoId) {
-      const itemExistente = comunicacoes.find(c => c.id === editandoId);
-      const docsAntigos = itemExistente?.documentos || [];
+    try {
+      if (editandoId) {
+        const itemExistente = comunicacoes.find(c => c.id === editandoId);
+        const docsAntigos = itemExistente?.documentos || [];
 
-      const docsAtualizados: DocumentoNotificacao[] = linhasDocs.length > 0
-        ? linhasDocs.map((nome, idx) => {
-            const achado = docsAntigos.find(d => d.nome.toLowerCase() === nome.toLowerCase());
-            return {
-              id: achado ? achado.id : `doc-${Date.now()}-${idx}`,
-              nome,
-              entregue: achado ? achado.entregue : false,
-              data_entrega: achado ? achado.data_entrega : undefined,
-            };
-          })
-        : [{ id: `doc-${Date.now()}-0`, nome: 'Complementação de instrução documental', entregue: false }];
+        const docsAtualizados: DocumentoNotificacao[] = linhasDocs.length > 0
+          ? linhasDocs.map((nome, idx) => {
+              const achado = docsAntigos.find(d => d.nome.toLowerCase() === nome.toLowerCase());
+              return {
+                id: achado ? achado.id : `doc-${Date.now()}-${idx}`,
+                nome,
+                entregue: achado ? achado.entregue : false,
+                data_entrega: achado ? achado.data_entrega : undefined,
+              };
+            })
+          : [{ id: `doc-${Date.now()}-0`, nome: 'Complementação de instrução documental', entregue: false }];
 
-      const listaAtualizada = comunicacoes.map(c => {
-        if (c.id !== editandoId) return c;
-        return {
-          ...c,
+        const atualizado = await atualizarComunicacaoApi(editandoId, {
           numero_processo: novoProcesso.trim(),
           interessado: novoInteressado.trim(),
           tipo_assunto: novoTipoAssunto,
@@ -379,62 +429,73 @@ Assessoria Técnica - ASTEC / SEDUR`;
           data_limite: dataLimiteCalculada,
           documentos: docsAtualizados,
           observacoes: novasObs.trim(),
-        };
-      });
+        });
 
-      salvarLista(listaAtualizada);
-    } else {
-      const docsFormatados: DocumentoNotificacao[] = linhasDocs.length > 0
-        ? linhasDocs.map((nome, idx) => ({
-            id: `doc-${Date.now()}-${idx}`,
-            nome,
-            entregue: false,
-          }))
-        : [{ id: `doc-${Date.now()}-0`, nome: 'Complementação de instrução documental', entregue: false }];
+        setComunicacoes(prev => prev.map(c => (c.id === editandoId ? atualizado : c)));
+      } else {
+        const docsFormatados: DocumentoNotificacao[] = linhasDocs.length > 0
+          ? linhasDocs.map((nome, idx) => ({
+              id: `doc-${Date.now()}-${idx}`,
+              nome,
+              entregue: false,
+            }))
+          : [{ id: `doc-${Date.now()}-0`, nome: 'Complementação de instrução documental', entregue: false }];
 
-      const novaCom = {
-        id: `com-${Date.now()}`,
-        numero_processo: novoProcesso.trim(),
-        interessado: novoInteressado.trim(),
-        tipo_assunto: novoTipoAssunto,
-        qtd_prorrogacoes: novaQtdProrrogacoes,
-        setor_origem: novoSetor,
-        data_envio: novaDataEnvio,
-        prazo_dias: novoPrazoDias,
-        data_limite: dataLimiteCalculada,
-        documentos: docsFormatados,
-        observacoes: novasObs.trim(),
-        created_at: new Date().toISOString(),
-      };
+        const criado = await criarComunicacaoApi({
+          numero_processo: novoProcesso.trim(),
+          interessado: novoInteressado.trim(),
+          tipo_assunto: novoTipoAssunto,
+          qtd_prorrogacoes: novaQtdProrrogacoes,
+          setor_origem: novoSetor,
+          data_envio: novaDataEnvio,
+          prazo_dias: novoPrazoDias,
+          data_limite: dataLimiteCalculada,
+          documentos: docsFormatados,
+          observacoes: novasObs.trim(),
+        });
 
-      salvarLista([novaCom, ...comunicacoes]);
+        setComunicacoes(prev => [criado, ...prev]);
+      }
+
+      setModalAberto(false);
+      limparFormulario();
+    } catch (err: any) {
+      alert('Erro ao salvar no banco: ' + err.message);
     }
-
-    setModalAberto(false);
-    limparFormulario();
   };
 
-  const handleToggleDoc = (comId: string, docId: string) => {
+  const handleToggleDoc = async (comId: string, docId: string) => {
+    const alvo = comunicacoes.find(c => c.id === comId);
+    if (!alvo) return;
+
     const hojeStr = new Date().toISOString().split('T')[0];
-    const atualizadas = comunicacoes.map(c => {
-      if (c.id !== comId) return c;
-      const docsAtualizados = c.documentos.map(d => {
-        if (d.id !== docId) return d;
-        const novoEntregue = !d.entregue;
-        return {
-          ...d,
-          entregue: novoEntregue,
-          data_entrega: novoEntregue ? hojeStr : undefined,
-        };
-      });
-      return { ...c, documentos: docsAtualizados };
+    const docsAtualizados = alvo.documentos.map(d => {
+      if (d.id !== docId) return d;
+      const novoEntregue = !d.entregue;
+      return {
+        ...d,
+        entregue: novoEntregue,
+        data_entrega: novoEntregue ? hojeStr : undefined,
+      };
     });
-    salvarLista(atualizadas);
+
+    setComunicacoes(prev => prev.map(c => (c.id === comId ? { ...c, documentos: docsAtualizados } : c)));
+    try {
+      await atualizarComunicacaoApi(comId, { documentos: docsAtualizados });
+    } catch (err: any) {
+      alert('Erro ao atualizar documento no banco: ' + err.message);
+      carregarDoBanco();
+    }
   };
 
-  const handleExcluir = (id: string) => {
+  const handleExcluir = async (id: string) => {
     if (!confirm('Deseja remover este acompanhamento?')) return;
-    salvarLista(comunicacoes.filter(c => c.id !== id));
+    try {
+      await excluirComunicacaoApi(id);
+      setComunicacoes(prev => prev.filter(c => c.id !== id));
+    } catch (err: any) {
+      alert('Erro ao excluir do banco: ' + err.message);
+    }
   };
 
   // =========================================================================
@@ -898,6 +959,27 @@ Assessoria Técnica - ASTEC / SEDUR`;
         </div>
       </div>
 
+      {qtdLocaisParaMigrar > 0 && (
+        <div className="p-4 bg-blue-50 border-2 border-blue-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-950">
+          <div className="flex items-center gap-2">
+            <CloudUpload className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            <span>
+              <strong>Dados locais encontrados neste computador:</strong> Existem{' '}
+              <b>{qtdLocaisParaMigrar} processo(s)</b> salvos apenas neste navegador. Envie para o banco na nuvem para acessar de qualquer PC.
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={migrando}
+            onClick={handleMigrarDadosLocais}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold whitespace-nowrap flex items-center gap-1.5 disabled:opacity-60"
+          >
+            {migrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+            {migrando ? 'Enviando...' : 'Enviar para Nuvem Agora'}
+          </button>
+        </div>
+      )}
+
       {/* Cards de Resumo (KPIs) - TOTAL FOCA EM PENDENTES */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div 
@@ -1009,7 +1091,12 @@ Assessoria Técnica - ASTEC / SEDUR`;
 
       {/* LISTA DE PROCESSOS */}
       <div className="space-y-4">
-        {listaFiltrada.length === 0 ? (
+        {carregandoBanco ? (
+          <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 p-6">
+            <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto mb-2" />
+            <p className="text-xs font-semibold text-slate-600">Carregando prazos salvos na nuvem...</p>
+          </div>
+        ) : listaFiltrada.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 p-6">
             <Clock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <h3 className="text-sm font-bold text-slate-700">Nenhum processo localizado</h3>
