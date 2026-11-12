@@ -1,15 +1,17 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
+
+type ApiReq = { method?: string; body?: any };
+type ApiRes = { status: (code: number) => ApiRes; json: (data: any) => void };
 
 function gerarToken(usuario: string, secret: string): string {
   const payload = Buffer.from(
-    JSON.stringify({ user: usuario, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 }) // 7 dias
+    JSON.stringify({ user: usuario, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 })
   ).toString('base64url');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default function handler(req: ApiReq, res: ApiRes) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
