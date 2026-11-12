@@ -1,6 +1,13 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { neon } from '@neondatabase/serverless';
 import crypto from 'crypto';
+
+type ApiReq = {
+  method?: string;
+  headers: Record<string, string | undefined>;
+  body?: any;
+  query?: Record<string, string | string[] | undefined>;
+};
+type ApiRes = { status: (code: number) => ApiRes; json: (data: any) => void };
 
 function validarToken(authHeader: string | undefined, secret: string): boolean {
   if (!authHeader?.startsWith('Bearer ')) return false;
@@ -19,7 +26,7 @@ function validarToken(authHeader: string | undefined, secret: string): boolean {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: ApiReq, res: ApiRes) {
   const secret = process.env.AUTH_SECRET;
   const dbUrl = process.env.DATABASE_URL;
 
@@ -37,6 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       const rows = await sql`
         SELECT id, numero_processo, interessado, setor_origem,
+               tipo_assunto, qtd_prorrogacoes,
                to_char(data_envio, 'YYYY-MM-DD') AS data_envio,
                prazo_dias,
                to_char(data_limite, 'YYYY-MM-DD') AS data_limite,
@@ -48,15 +56,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { numero_processo, interessado, setor_origem, data_envio, prazo_dias, data_limite, documentos, observacoes } = req.body;
+      const {
+        numero_processo, interessado, setor_origem, tipo_assunto,
+        qtd_prorrogacoes, data_envio, prazo_dias, data_limite, documentos, observacoes
+      } = req.body;
+
       const rows = await sql`
         INSERT INTO comunicacoes_externas (
-          numero_processo, interessado, setor_origem, data_envio, prazo_dias, data_limite, documentos, observacoes
+          numero_processo, interessado, setor_origem, tipo_assunto, qtd_prorrogacoes,
+          data_envio, prazo_dias, data_limite, documentos, observacoes
         ) VALUES (
-          ${numero_processo}, ${interessado}, ${setor_origem}, ${data_envio}, ${Number(prazo_dias)}, ${data_limite},
+          ${numero_processo}, ${interessado}, ${setor_origem}, ${tipo_assunto || 'LO'}, ${Number(qtd_prorrogacoes || 0)},
+          ${data_envio}, ${Number(prazo_dias)}, ${data_limite},
           ${JSON.stringify(documentos || [])}::jsonb, ${observacoes || null}
         )
         RETURNING id, numero_processo, interessado, setor_origem,
+                  tipo_assunto, qtd_prorrogacoes,
                   to_char(data_envio, 'YYYY-MM-DD') AS data_envio,
                   prazo_dias,
                   to_char(data_limite, 'YYYY-MM-DD') AS data_limite,
@@ -66,19 +81,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'PATCH') {
-      const { id, documentos, observacoes, setor_origem, data_envio, prazo_dias, data_limite } = req.body;
+      const {
+        id, numero_processo, interessado, setor_origem, tipo_assunto,
+        qtd_prorrogacoes, data_envio, prazo_dias, data_limite, documentos, observacoes
+      } = req.body;
       if (!id) return res.status(400).json({ error: 'ID obrigatório' });
 
       const rows = await sql`
         UPDATE comunicacoes_externas
-        SET documentos = COALESCE(${documentos ? JSON.stringify(documentos) : null}::jsonb, documentos),
-            observacoes = COALESCE(${observacoes ?? null}, observacoes),
+        SET numero_processo = COALESCE(${numero_processo ?? null}, numero_processo),
+            interessado = COALESCE(${interessado ?? null}, interessado),
             setor_origem = COALESCE(${setor_origem ?? null}, setor_origem),
+            tipo_assunto = COALESCE(${tipo_assunto ?? null}, tipo_assunto),
+            qtd_prorrogacoes = COALESCE(${qtd_prorrogacoes ?? null}::integer, qtd_prorrogacoes),
             data_envio = COALESCE(${data_envio ?? null}::date, data_envio),
             prazo_dias = COALESCE(${prazo_dias ?? null}::integer, prazo_dias),
-            data_limite = COALESCE(${data_limite ?? null}::date, data_limite)
+            data_limite = COALESCE(${data_limite ?? null}::date, data_limite),
+            documentos = COALESCE(${documentos ? JSON.stringify(documentos) : null}::jsonb, documentos),
+            observacoes = COALESCE(${observacoes ?? null}, observacoes)
         WHERE id = ${id}::uuid
         RETURNING id, numero_processo, interessado, setor_origem,
+                  tipo_assunto, qtd_prorrogacoes,
                   to_char(data_envio, 'YYYY-MM-DD') AS data_envio,
                   prazo_dias,
                   to_char(data_limite, 'YYYY-MM-DD') AS data_limite,
@@ -88,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'DELETE') {
-      const id = req.query.id || req.body?.id;
+      const id = req.query?.id || req.body?.id;
       if (!id) return res.status(400).json({ error: 'ID obrigatório' });
       await sql`DELETE FROM comunicacoes_externas WHERE id = ${String(id)}::uuid`;
       return res.status(200).json({ ok: true });
