@@ -13,7 +13,8 @@ import {
   X,
   ShieldCheck,
   Clock,
-  Compass
+  Compass,
+  LogOut
 } from 'lucide-react';
 import { ProcessoFormData } from './types';
 import { Step1Identificacao } from './components/Step1Identificacao';
@@ -21,6 +22,7 @@ import { Step2Enquadramento } from './components/Step2Enquadramento';
 import { Step3Documentos } from './components/Step3Documentos';
 import { Step4Parecer } from './components/Step4Parecer';
 import { PainelComunicacaoExterna } from './components/PainelComunicacaoExterna';
+import { Login } from './components/Login';
 import { listarProcessosSalvos, excluirProcesso } from './services/api';
 
 const ESTADO_INICIAL: ProcessoFormData = {
@@ -48,6 +50,17 @@ const ESTADO_INICIAL: ProcessoFormData = {
 };
 
 export default function App() {
+  const [usuarioLogado, setUsuarioLogado] = useState<string | null>(() => {
+    const token = localStorage.getItem('astec_auth_token');
+    const user = localStorage.getItem('astec_auth_user');
+    return token && user ? user : null;
+  });
+
+  const handleLogout = () => {
+    localStorage.removeItem('astec_auth_token');
+    localStorage.removeItem('astec_auth_user');
+    setUsuarioLogado(null);
+  };
   // Controle de Módulo: 'TRIAGEM' ou 'COMUNICACAO_EXTERNA'
   const [moduloAtivo, setModuloAtivo] = useState<'TRIAGEM' | 'COMUNICACAO_EXTERNA'>('TRIAGEM');
 
@@ -120,6 +133,10 @@ export default function App() {
     { num: 4, label: 'Parecer Técnico', icon: FileText },
   ];
 
+  if (!usuarioLogado) {
+    return <Login onLoginSuccess={(user) => setUsuarioLogado(user)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Header Governamental */}
@@ -174,6 +191,16 @@ export default function App() {
               title="Processos Salvos no Banco"
             >
               <History className="w-4 h-4 text-emerald-400" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="px-3 py-2 bg-slate-800 hover:bg-rose-700 text-slate-200 hover:text-white text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+              title={`Conectado como ${usuarioLogado}. Clique para sair`}
+            >
+              <LogOut className="w-4 h-4" />
+              Sair
             </button>
           </div>
         </div>
